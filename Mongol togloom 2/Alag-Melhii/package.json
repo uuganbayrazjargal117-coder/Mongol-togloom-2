@@ -1,0 +1,18 @@
+{
+  "name": "mongol-togloom-lan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LAN lobby for the Mongolian traditional game collection",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/lobby.test.cjs"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}

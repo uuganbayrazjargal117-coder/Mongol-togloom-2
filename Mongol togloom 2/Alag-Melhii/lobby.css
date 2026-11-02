@@ -1,0 +1,21 @@
+:root { font-family: system-ui, sans-serif; color: #fff0cf; background: #24190f; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100dvh; padding: 24px; background: linear-gradient(#20120bb0, #140a04cc), url('ger-room.png') center / cover fixed; }
+main { width: min(620px, 100%); margin: 4vh auto; padding: 28px; border: 1px solid #d0aa70; border-radius: 18px; background: #183b34f5; }
+a { color: #f2d695; }
+h1 { font-size: clamp(24px, 5vw, 32px); }
+h2 { font-size: 20px; }
+p { line-height: 1.5; }
+label { display: block; margin-bottom: 8px; }
+.join-row { display: flex; gap: 10px; }
+input, button { font: inherit; padding: 12px; border: 1px solid #d0aa70; border-radius: 8px; }
+input { width: 100%; min-width: 0; background: #fff8e9; color: #302619; }
+button { cursor: pointer; background: #e6bd67; color: #173d31; font-weight: 700; }
+button:disabled { opacity: .5; cursor: default; }
+button[hidden] { display: none; }
+#players { padding: 0; list-style: none; }
+#players li { margin: 8px 0; padding: 12px; border: 1px solid #779386; border-radius: 8px; overflow-wrap: anywhere; }
+#player-count, .note { font-size: 14px; color: #d2e6d7; }
+#error { color: #ffb7a5; }
+:focus-visible { outline: 3px solid #fff0cf; outline-offset: 3px; }
+@media (max-width: 440px) { body { padding: 12px; } main { padding: 20px; } .join-row { flex-direction: column; } }

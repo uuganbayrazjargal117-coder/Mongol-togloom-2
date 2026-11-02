@@ -33,14 +33,14 @@ group('Мод',5,colors.wood,[point(281,974,0,1.57),point(278,1035,0,1.57),point
 group('Төмөр',3,colors.metal,[point(880,1009,0,1.55+Math.PI),point(1006,1050,0,1.15+Math.PI),point(1105,1120,0,.85+Math.PI)]);
 const dice=['','⚀','⚁','⚂','⚃','⚄','⚅'];
 function reset(){count=Math.max(1,Math.min(12,Math.floor(Number($('players').value)||2)));$('players').value=count;player=0;scores=Array(count).fill(0);eliminated=Array(count).fill(false);rolled=0;finished=false;for(const g of groups){g.present=true;g.objects.forEach(m=>m.visible=true);}if(renderer)$('roll').disabled=!started;setDie(5);$('message').textContent='Шоо хаяад авах эрхтнээ сонгоорой.';update();}
-function update(){let remaining=groups.filter(g=>g.present).reduce((a,g)=>a+g.n,0);$('remaining').textContent=remaining+' шагай үлдсэн';$('turn').textContent=finished?'Тоглоом дууслаа':`Тоглогч ${player+1}`;$('scores').replaceChildren(...scores.map((s,i)=>{let el=document.createElement('div');el.className='score'+(i===player&&!finished?' active':'')+(eliminated[i]?' eliminated':'');let label=document.createElement('span');label.textContent=`Тоглогч ${i+1}${eliminated[i]?' · хасагдсан':''}`;let num=document.createElement('strong');num.textContent=s+' шагай';el.append(label,num);return el;}));$('choices').replaceChildren();for(const g of groups){g.objects.forEach(m=>{const highlighted=Boolean(valid(g));m.material.emissive.setHex(0);m.material.emissiveIntensity=0;if(m.userData.outline)m.userData.outline.visible=highlighted;});}if(rolled){for(const g of eligible()){let b=document.createElement('button');b.className='eligible-choice';b.textContent=(mode==='return'?'Буцаах: ':'')+g.name+` · ${g.n}`;b.onclick=()=>select(g);$('choices').append(b);}}}
+function update(){let remaining=groups.filter(g=>g.present).reduce((a,g)=>a+g.n,0);$('remaining').textContent=remaining+' шагай үлдсэн';$('turn').textContent=finished?'Тоглоом дууслаа':`Тоглогч ${player+1}`;$('scores').replaceChildren(...scores.map((s,i)=>{let el=document.createElement('div');el.className='score'+(i===player&&!finished?' active':'')+(eliminated[i]?' eliminated':'');let label=document.createElement('span');label.textContent=`Тоглогч ${i+1}${eliminated[i]?' · хасагдсан':''}`;let num=document.createElement('strong');num.textContent=s+' шагай';el.append(label,num);return el;}));$('choices').replaceChildren();for(const g of groups){g.objects.forEach(m=>{const highlighted=Boolean(valid(g));m.material.emissive.setHex(0);m.material.emissiveIntensity=0;if(m.userData.outline)m.userData.outline.visible=highlighted;});}if(rolled){for(const g of eligible()){let b=document.createElement('button');b.className='eligible-choice';b.textContent=(mode==='return'?'Буцаах: ':'')+g.name+` · ${g.n}`;b.disabled=lan;b.onclick=()=>select(g);$('choices').append(b);}}}
 function eligible(){return groups.filter(g=>g.n===rolled&&(mode==='take'?g.present:(!g.present&&scores[player]>=rolled)));}function valid(g){return rolled&&eligible().includes(g);}
 function next(){rolled=0;do{player=(player+1)%count;}while(eliminated[player]);$('roll').disabled=false;update();}
 function eliminateCurrent(){const removed=player+1,amount=rolled;eliminated[player]=true;rolled=0;const remaining=scores.map((_,i)=>i).filter(i=>!eliminated[i]);const text=`${amount} буулаа. Тоглогч ${removed} буцаах шагай хүрэлцэхгүй тул тоглоомоос хасагдлаа.`;if(remaining.length<=1){finished=true;$('roll').disabled=true;$('message').textContent=text+(remaining.length?` Тоглогч ${remaining[0]+1} хожлоо!`:' Тоглоом дууслаа.');update();}else{next();$('message').textContent=text+' Дараагийн ээлж.'}}
-function select(g){if(!valid(g)||finished)return;if(mode==='take'){g.present=false;scores[player]+=g.n;}else{g.present=true;scores[player]-=g.n;}g.objects.forEach(m=>m.visible=g.present);const text=`Тоглогч ${player+1} ${g.name.toLowerCase()}${mode==='take'?' авлаа':' буцааж өрлөө'}.`;if(groups.every(x=>!x.present)){finished=true;rolled=0;const max=Math.max(...scores.filter((_,i)=>!eliminated[i])),winners=scores.map((s,i)=>!eliminated[i]&&s===max?i+1:null).filter(Boolean);$('message').textContent=`${winners.map(i=>'Тоглогч '+i).join(', ')} ${max} шагайгаар хожлоо!`;$('roll').disabled=true;update();}else{next();$('message').textContent=text+' Дараагийн ээлж.'}}
-$('roll').onclick=async()=>{if(!started||rolled||finished||rolling)return;rolling=true;$('roll').disabled=true;$('restart').disabled=true;$('message').textContent='Шоо өнхөрч байна…';const result=Math.floor(Math.random()*6)+1;await animateDie(result);rolling=false;$('restart').disabled=false;rolled=result;mode='take';$('roll').disabled=true;if(!eligible().length){mode='return';if(!eligible().length){eliminateCurrent();return;}const returningPlayer=player+1;const amount=rolled;select(eligible()[0]);$('message').textContent=`${amount} буулаа. Тоглогч ${returningPlayer} өөрийн ${amount} шагайг буцааж өрлөө.`;return;}else $('message').textContent=`${rolled} буулаа.`;update();};
-$('restart').onclick=()=>{if(!scores.some(Boolean)||confirm('Одоогийн тоглолтыг дуусгаж шинээр эхлэх үү?')){started=false;$('roll').disabled=true;$('start-screen').hidden=false;$('start').focus();}};
-$('start').onclick=()=>{started=true;reset();$('start-screen').hidden=true;positionCamera();$('roll').focus();};
+function select(g){if(lan)return;if(!valid(g)||finished)return;if(mode==='take'){g.present=false;scores[player]+=g.n;}else{g.present=true;scores[player]-=g.n;}g.objects.forEach(m=>m.visible=g.present);const text=`Тоглогч ${player+1} ${g.name.toLowerCase()}${mode==='take'?' авлаа':' буцааж өрлөө'}.`;if(groups.every(x=>!x.present)){finished=true;rolled=0;const max=Math.max(...scores.filter((_,i)=>!eliminated[i])),winners=scores.map((s,i)=>!eliminated[i]&&s===max?i+1:null).filter(Boolean);$('message').textContent=`${winners.map(i=>'Тоглогч '+i).join(', ')} ${max} шагайгаар хожлоо!`;$('roll').disabled=true;update();}else{next();$('message').textContent=text+' Дараагийн ээлж.'}}
+$('roll').onclick=async()=>{if(lan){requestLanRoll();return;}if(!started||rolled||finished||rolling)return;rolling=true;$('roll').disabled=true;$('restart').disabled=true;$('message').textContent='Шоо өнхөрч байна…';const result=Math.floor(Math.random()*6)+1;await animateDie(result);rolling=false;$('restart').disabled=false;rolled=result;mode='take';$('roll').disabled=true;if(!eligible().length){mode='return';if(!eligible().length){eliminateCurrent();return;}const returningPlayer=player+1;const amount=rolled;select(eligible()[0]);$('message').textContent=`${amount} буулаа. Тоглогч ${returningPlayer} өөрийн ${amount} шагайг буцааж өрлөө.`;return;}else $('message').textContent=`${rolled} буулаа.`;update();};
+$('restart').onclick=()=>{if(lan)return;if(!scores.some(Boolean)||confirm('Одоогийн тоглолтыг дуусгаж шинээр эхлэх үү?')){started=false;$('roll').disabled=true;$('start-screen').hidden=false;$('start').focus();}};
+$('start').onclick=()=>{if(lan)return;started=true;reset();$('start-screen').hidden=true;positionCamera();$('roll').focus();};
 document.querySelectorAll('[data-count]').forEach(b=>b.onclick=()=>{$('players').value=b.dataset.count;syncPlayerPicks();});
 function syncPlayerPicks(){document.querySelectorAll('[data-count]').forEach(b=>b.classList.toggle('selected',Number(b.dataset.count)===Number($('players').value)));}
 $('players').oninput=syncPlayerPicks;$('rules').onclick=()=>$('help').showModal();$('close').onclick=()=>$('help').close();
@@ -74,4 +74,56 @@ function setDie(value){const [x,y]=faceAngles[value];$('die').style.transform=`r
 async function animateDie(value){const cube=$('die'),[x,y]=faceAngles[value],reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;playDiceSound(reduced?.2:1.2);const anim=cube.animate(reduced?[{opacity:.4},{opacity:1}]:[{transform:'translate(-60px,-30px) rotateX(0deg) rotateY(0deg) rotateZ(-25deg)'},{offset:.4,transform:'translate(30px,-42px) rotateX(390deg) rotateY(250deg) rotateZ(20deg)'},{offset:.7,transform:'translate(10px,0px) rotateX(620deg) rotateY(530deg) rotateZ(-12deg)'},{offset:.87,transform:`translate(0,-9px) rotateX(${x+720}deg) rotateY(${y+720}deg)`},{transform:`translate(0,0) rotateX(${x+720}deg) rotateY(${y+720}deg)`}],{duration:reduced?200:1200,easing:'ease-out'});await anim.finished;setDie(value);}
 import { setupHandThrow } from './hand-throw.js';
 setupHandThrow({canThrow:()=>started&&!rolled&&!rolling&&!finished,throwDice:()=>$('roll').click()});
-init();
+
+const lan=new URLSearchParams(location.search).get('lan')==='1';
+let lanSocket=null,lanId=null,lanState=null,lanReady=false,lanSequence=0,lanPending=false;
+function renderLanUI(){
+  if(!lanState)return;
+  const current=lanState.players.find(p=>p.id===lanState.currentPlayerId);
+  $('turn').textContent=current ? current.name+' | Seat '+(current.seat+1) : 'Waiting for server';
+  $('scores').replaceChildren(...lanState.players.map(p=>{
+    const el=document.createElement('div');
+    el.className='score'+(p.id===lanState.currentPlayerId?' active':'');
+    const label=document.createElement('span'),value=document.createElement('strong');
+    label.textContent=p.name+' | Seat '+(p.seat+1)+(p.id===lanId?' (You)':'');
+    value.textContent=p.score+' bones';el.append(label,value);return el;
+  }));
+  $('roll').disabled=!lanReady||!lanSocket?.connected||lanPending||rolling||Boolean(lanState.rolled)||lanState.finished||lanId!==lanState.currentPlayerId;
+}
+async function applyLanState(){
+  if(!lanReady||!lanState)return;
+  const state=lanState;
+  started=state.started;finished=state.finished;count=state.players.length;
+  scores=state.players.map(p=>p.score);eliminated=state.players.map(p=>p.eliminated);
+  player=state.players.findIndex(p=>p.id===state.currentPlayerId);
+  $('start-screen').hidden=true;$('restart').disabled=true;
+  if(state.rollSequence>lanSequence){
+    lanSequence=state.rollSequence;rolling=true;renderLanUI();
+    $('message').textContent='Rolling dice...';
+    await animateDie(state.rolled);rolling=false;
+  }
+  rolled=state.rolled;mode='take';update();renderLanUI();
+  $('message').textContent=rolled ? rolled+' rolled. Group selection is not available yet.' : 'LAN: Waiting for '+$('turn').textContent+' to roll.';
+}
+function requestLanRoll(){
+  if($('roll').disabled||!lanSocket)return;
+  lanPending=true;renderLanUI();
+  lanSocket.timeout(5000).emit('game:roll',{},(error,response)=>{
+    lanPending=false;renderLanUI();
+    if(error||!response?.ok)$('message').textContent=response?.error||'Server did not respond. Reconnecting...';
+  });
+}
+if(lan){
+  $('start-screen').hidden=true;$('restart').disabled=true;
+  $('message').textContent='Connecting to LAN game...';
+  if(typeof io==='function'){
+    lanSocket=io({auth:{sessionToken:sessionStorage.getItem('lan-session-token')}});
+    lanSocket.on('session',s=>{lanId=s.playerId;lanSocket.auth.sessionToken=s.token;sessionStorage.setItem('lan-session-token',s.token);renderLanUI();});
+    lanSocket.on('game:state',state=>{lanState=state;applyLanState();});
+    lanSocket.on('connect',renderLanUI);
+    lanSocket.on('disconnect',()=>{renderLanUI();$('message').textContent='Disconnected. Reconnecting to your LAN seat...';});
+    lanSocket.on('connect_error',()=>{$('roll').disabled=true;$('message').textContent='Cannot connect to LAN server.';});
+    lanSocket.on('lobby:state',state=>{if(!state.started)$('message').textContent='No active LAN game. Return to the lobby.';});
+  }
+}
+init().then(()=>{lanReady=true;if(lanState)applyLanState();});

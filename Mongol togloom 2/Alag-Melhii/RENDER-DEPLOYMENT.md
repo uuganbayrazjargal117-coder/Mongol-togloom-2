@@ -23,9 +23,9 @@ Commit the server, package.json, package-lock.json, browser files, vendor files,
 ## Public verification after you deploy
 
 1. Open https://YOUR-SERVICE.onrender.com on each device. Use the same domain on home Wi-Fi, a different Wi-Fi, and mobile data.
-2. Choose Multiplayer Lobby or open /lobby.html; join with different names. The first joiner is host.
-3. Start on the host. All joined tabs should navigate to /turtle.html?lan=1, retaining names and seats. Seat 1 is current; other players cannot roll.
-4. Roll on Seat 1. Every device should finish the existing dice animation on the same value and highlight the same groups.
+2. Choose Multiplayer Lobby or open /lobby.html; join with different names. The first joiner is host and can select Alag Melkhii or Horse Racing. Only the host can choose the Horse Racing track length (12, 18 or 24).
+3. Start on the host. All joined tabs should navigate to /turtle.html?lan=1 or /race.html?lan=1 for the server-selected game, retaining names and seats. Seat 1 is current; other players cannot throw.
+4. In Alag Melkhii, roll on Seat 1 and check matching dice/highlighting. In Horse Racing, check matching four-shagai results, movement, turns and final ranking. See HORSE-MULTIPLAYER.md for the full two-network check.
 5. Refresh a game page and briefly interrupt a connection to verify session restoration. In browser Network tools, Socket.IO polling uses HTTPS and WebSocket upgrades use WSS, with no mixed-content requests.
 6. Enable the camera and grant browser permission. Confirm hand detection runs locally; no camera stream is uploaded. HTTPS enables camera APIs, subject to browser/device permission and support. Confirm Three.js, model, WASM and audio requests succeed.
 
@@ -37,9 +37,9 @@ Run npm test. In environments that block test-runner subprocesses, use node --te
 
 ## Existing limitations
 
-Only Alag Melkhii Stage 2 is multiplayer: start, roster, current turn, server dice and eligible highlighting. Group selection, subsequent turns, score changes, elimination and winner logic remain deferred. Horse Racing retains local gameplay. Server validation ignores client-supplied identities, seats and dice values; session tokens are server-issued bearer credentials kept in per-tab sessionStorage. Camera processing and video stay in the browser.
+Alag Melkhii remains Stage 2: start, roster, current turn, server dice and eligible highlighting. Its group selection, subsequent turns, score changes, elimination and winner logic remain deferred. Horse Racing supports multiplayer throws, movement, subsequent turns, finish and full ranking using the existing rules; direct race.html still offers local play. Server validation ignores client-supplied identities, seats, random results and movement; session tokens are server-issued bearer credentials kept in per-tab sessionStorage. Camera processing and video stay in the browser.
 
-There is one shared lobby/game, up to 12 players, with no private room codes. Anyone with the public URL can join available seats. Keep one server instance: state and sessions live in memory, without a shared store or Socket.IO adapter. Restart, redeploy or instance replacement resets them. A started game retains its roster when players leave and cannot be reset through the UI; restart the service for a new game. A sleeping/stopped instance can interrupt play. Production HTTPS/WSS, camera permission and cross-network connectivity require verification on the actual public domain after deployment.
+There is one shared lobby/game, up to 12 players, with no private room codes. Anyone with the public URL can join available seats. Keep one server instance: state and sessions live in memory, without a shared store or Socket.IO adapter. Restart, redeploy or instance replacement resets them. A started game retains its roster when players leave and cannot be reset through the UI; restart the service for a new game. Horse Racing broadcasts offline status and skips disconnected racers after a reconnect window; all-offline unfinished races wait for a reconnect. A sleeping/stopped instance can interrupt play. Production HTTPS/WSS, camera permission and cross-network connectivity require verification on the actual public domain after deployment.
 
 Official references:
 - https://render.com/docs/deploy-node-express-app

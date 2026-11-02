@@ -3,12 +3,13 @@ const { createServer } = require('node:http');
 const { networkInterfaces } = require('node:os');
 const path = require('node:path');
 const { Server } = require('socket.io');
+const { createHorseGame } = require('./horse-game.cjs');
 
 const { randomUUID, randomInt } = require('node:crypto');
 const MAX_PLAYERS = 12;
 const PORT = process.env.PORT || 3000;
 
-function createLobbyServer() {
+function createLobbyServer({ horseOptions } = {}) {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, { maxHttpBufferSize: 4096 });
@@ -16,7 +17,11 @@ function createLobbyServer() {
   let hostId = null;
   let started = false;
   let game = null;
+  let horseGame = null;
+  let selectedGame = 'alag';
+  let trackLength = 18;
   const sessions = new Map();
+  httpServer.on('close', () => horseGame?.close());
 
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
@@ -42,6 +47,8 @@ function createLobbyServer() {
       players: [...players.values()].sort((a, b) => a.seat - b.seat),
       hostId,
       maxPlayers: MAX_PLAYERS,
+      selectedGame,
+      trackLength,
       started
     };
   }
@@ -53,6 +60,10 @@ function createLobbyServer() {
     if (players.has(restored)) {
       socket.data.playerId = restored;
       socket.emit('session', { token, playerId: restored });
+      if (horseGame) {
+        horseGame.setConnected(restored, true);
+        socket.emit('horse:state', horseGame.snapshot());
+      }
       if (game) socket.emit('game:state', game);
     }
     // Connections do not occupy a seat until Join Game is accepted.
@@ -82,6 +93,20 @@ function createLobbyServer() {
       reply({ ok: true });
     });
 
+    socket.on('lobby:select', (payload, acknowledge) => {
+      const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
+      if (socket.data.playerId !== hostId || !players.has(socket.data.playerId) || started) {
+        return reply({ ok: false, error: 'Only the host can change settings before starting.' });
+      }
+      if (!['alag', 'horse'].includes(payload?.game) || ![12, 18, 24].includes(payload?.trackLength)) {
+        return reply({ ok: false, error: 'Choose a valid game and track length.' });
+      }
+      selectedGame = payload.game;
+      trackLength = payload.trackLength;
+      broadcast();
+      reply({ ok: true });
+    });
+
     socket.on('lobby:start', acknowledge => {
       const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
       if (!players.has(socket.data.playerId) || socket.data.playerId !== hostId) {
@@ -90,10 +115,19 @@ function createLobbyServer() {
       if (started) return reply({ ok: false, error: 'The lobby has already started.' });
       started = true;
       const roster = snapshot().players;
-      game = { id: randomUUID(), players: roster.map(p => ({ ...p, score: 0, eliminated: false })),
-        currentPlayerId: roster[0].id, currentSeat: roster[0].seat,
-        rolled: 0, rollSequence: 0, started: true, finished: false };
-      io.emit('game:state', game);
+      if (selectedGame === 'horse') {
+        horseGame = createHorseGame(roster, trackLength, state => io.emit('horse:state', state), horseOptions);
+        for (const p of roster) {
+          horseGame.setConnected(p.id, [...io.sockets.sockets.values()].some(s => s.data.playerId === p.id));
+        }
+        io.emit('horse:state', horseGame.snapshot());
+      } else {
+        game = { id: randomUUID(), players: roster.map(p => ({ ...p, score: 0, eliminated: false })),
+          currentPlayerId: roster[0].id, currentSeat: roster[0].seat,
+          rolled: 0, rollSequence: 0, started: true, finished: false };
+        io.emit('game:state', game);
+      }
+      io.emit('lobby:started', { selectedGame, gameId: horseGame?.snapshot().id ?? game.id });
       broadcast();
       reply({ ok: true });
     });
@@ -109,9 +143,20 @@ function createLobbyServer() {
       io.emit('game:state', game);
       reply({ ok: true });
     });
+    socket.on('horse:throw', async (payload, acknowledge) => {
+      const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
+      if (!socket.connected || !players.has(socket.data.playerId) || !horseGame) {
+        return reply({ ok: false, error: 'You are not in an active horse race.' });
+      }
+      const response = await horseGame.throwFor(socket.data.playerId, payload, () => socket.connected);
+      if (socket.connected) reply(response);
+    });
     socket.on('disconnect', () => {
       const id = socket.data.playerId;
       if (!players.has(id)) return;
+      if (horseGame && ![...io.sockets.sockets.values()].some(s => s.data.playerId === id)) {
+        horseGame.setConnected(id, false);
+      }
       // Allow navigation/reconnection; keep a started game's roster fixed.
       const timer = setTimeout(() => {
         if (started || [...io.sockets.sockets.values()].some(s => s.data.playerId === id)) return;

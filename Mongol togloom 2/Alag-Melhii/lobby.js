@@ -35,8 +35,12 @@
     $('join').textContent = me ? 'Joined' : 'Join Game';
     $('start').hidden = !isHost;
     $('start').disabled = !socket.connected || pending || state.started;
+    $('game-choice').value = state.selectedGame || 'alag';
+    $('race-length').value = String(state.trackLength || 18);
+    $('game-choice').disabled = !isHost || !socket.connected || pending || state.started;
+    $('race-length').disabled = !isHost || !socket.connected || pending || state.started || state.selectedGame !== 'horse';
     $('status').textContent = state.started
-      ? 'Starting Alag Melkhii?'
+      ? 'Starting ' + (state.selectedGame === 'horse' ? 'Horse Racing' : 'Alag Melkhii') + '...'
       : me ? (isHost ? 'You are the host. Start when everyone has joined.' : `Waiting for ${host?.name || 'the host'} to start.`)
         : state.players.length >= state.maxPlayers ? 'The lobby is full.' : 'Enter your name and press Join Game.';
   }
@@ -65,7 +69,13 @@
     pending = false;
     render();
   });
-  socket.on('lobby:state', snapshot => { state = snapshot; render(); if (state.started && state.players.some(p => p.id === playerId)) location.replace('turtle.html?lan=1'); });
+  function navigateToGame() {
+    if (!state.started || !state.players.some(p => p.id === playerId)) return;
+    // Only known server-selected game IDs map to local pages; never accept a redirect URL.
+    const pages = { alag: 'turtle.html?lan=1', horse: 'race.html?lan=1' };
+    if (pages[state.selectedGame]) location.replace(pages[state.selectedGame]);
+  }
+  socket.on('lobby:state', snapshot => { state = snapshot; render(); navigateToGame(); });
   socket.on('disconnect', () => {
     state = { players: [], maxPlayers: 12, hostId: null, started: false };
     pending = false;
@@ -83,5 +93,10 @@
   $('start').addEventListener('click', () => {
     if (!$('start').disabled) request('lobby:start');
   });
+  function selectGame() {
+    request('lobby:select', { game: $('game-choice').value, trackLength: Number($('race-length').value) });
+  }
+  $('game-choice').addEventListener('change', selectGame);
+  $('race-length').addEventListener('change', selectGame);
   render();
 })();

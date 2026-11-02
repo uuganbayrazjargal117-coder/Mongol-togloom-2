@@ -13,6 +13,20 @@
     <a href="index.html">← Game menu</a>
     <h1>Multiplayer Lobby</h1>
     <p>Share this website URL to join from any network. The first player to join is the lobby host.</p>
+    <fieldset id="game-settings">
+      <legend>Choose Game · Host settings</legend>
+      <label for="game-choice">Game</label>
+      <select id="game-choice" disabled>
+        <option value="alag">🐢 Алаг мэлхий</option>
+        <option value="horse">🐎 Морь уралдуулах</option>
+      </select>
+      <label for="race-length">Horse Racing track length</label>
+      <select id="race-length" disabled>
+        <option value="12">12</option>
+        <option value="18" selected>18</option>
+        <option value="24">24</option>
+      </select>
+    </fieldset>
     <form id="join-form">
       <label for="player-name">Player name</label>
       <div class="join-row">
@@ -27,7 +41,7 @@
     <button id="start" type="button" hidden disabled>Start Game</button>
     <p id="status" role="status" aria-live="polite"></p>
     <p id="error" role="alert"></p>
-    <p class="note">Alag Melkhii Stage 2: synchronized start, turn, dice and eligible groups. Group selection is not available yet.</p>
+    <p class="note">Horse Racing: synchronized throws, movement, turns and ranking. Alag Melkhii Stage 2: synchronized dice and eligible groups; group selection is not available yet.</p>
     <noscript>Enable JavaScript to join the lobby.</noscript>
   </main>
 </body>

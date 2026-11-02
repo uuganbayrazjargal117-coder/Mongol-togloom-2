@@ -17,6 +17,11 @@ test('deployment serves runtime assets and health without exposing private files
     if(asset.endsWith('.wasm'))assert.match(response.headers.get('content-type'),/application\/wasm/);
     assert.ok((await response.arrayBuffer()).byteLength>0,asset);
   }
+  for(const asset of ['/race-multiplayer.mjs','/race-logic.mjs','/shagai-audio.js']){
+    const response=await fetch(base+asset);assert.equal(response.status,200,asset);
+    assert.match(response.headers.get('content-type'),/javascript/);await response.arrayBuffer();
+  }
+  assert.equal((await fetch(base+'/horse-game.cjs')).status,404);
   for(const resource of ['/server.js','/package.json','/package-lock.json','/.env','/.git/config','/tests/deployment.test.cjs','/vendor/hand/package.json','/STAGE-2-LAN.md','/RENDER-DEPLOYMENT.md','/node_modules/express/package.json'])assert.equal((await fetch(base+resource)).status,404,resource);
   for(const transport of ['polling','websocket']){
     const socket=connect(base,{transports:[transport],reconnection:false,autoConnect:false});
@@ -32,6 +37,9 @@ test('browser endpoints remain same-origin and MediaPipe stays local',()=>{
     assert.match(source,/io\(\{\s*auth:/);
     assert.doesNotMatch(source,/(?:https?|wss?):\/\/|192\.168\.|10\.\d+\.\d+\.\d+/);
   }
+  const raceNetwork=fs.readFileSync(path.join(root,'race-multiplayer.mjs'),'utf8');
+  assert.match(raceNetwork,/ioFactory\(\{\s*auth:/);
+  assert.doesNotMatch(raceNetwork,/(?:https?|wss?):\/\/|192\.168\.|10\.\d+\.\d+\.\d+/);
   const hand=fs.readFileSync(path.join(root,'hand-throw.js'),'utf8');
   assert.match(hand,/navigator.mediaDevices.getUserMedia/);
   assert.match(hand,/new URL\('\.\/vendor\/hand\/hand_landmarker.task',import.meta.url\)/);

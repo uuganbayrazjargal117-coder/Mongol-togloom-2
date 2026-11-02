@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: mongol-togloom
+    runtime: node
+    rootDir: Mongol togloom 2/Alag-Melhii
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"

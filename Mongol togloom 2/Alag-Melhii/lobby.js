@@ -1,7 +1,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   if (typeof io !== 'function') {
-    $('connection').textContent = 'Server unavailable. Open this lobby through http://HOST_IP:3000 after starting Node.js.';
+    $('connection').textContent = 'Server unavailable. Open this lobby from the running multiplayer website.';
     return;
   }
   const socket = io({ auth: { sessionToken: sessionStorage.getItem('lan-session-token') } });
@@ -13,7 +13,7 @@
   });
   let state = { players: [], maxPlayers: 12, hostId: null, started: false };
   let pending = false;
-  // A name is remembered per tab; the server assigns a fresh socket identity on reconnect.
+  // The name and server-issued session token are remembered per tab.
   let rememberedName = '';
   try { rememberedName = sessionStorage.getItem('lan-player-name') || ''; } catch {}
   $('player-name').value = rememberedName;
@@ -60,7 +60,7 @@
   }
 
   socket.on('connect', () => {
-    $('connection').textContent = 'Connected to the LAN server.';
+    $('connection').textContent = 'Connected to the multiplayer server.';
     $('error').textContent = '';
     pending = false;
     render();
@@ -73,7 +73,7 @@
     render();
   });
   socket.on('connect_error', () => {
-    $('connection').textContent = 'Cannot reach the LAN server. Check that it is running and this page uses port 3000.';
+    $('connection').textContent = 'Cannot reach the multiplayer server. Check your connection and reload this website.';
     render();
   });
   $('join-form').addEventListener('submit', event => {

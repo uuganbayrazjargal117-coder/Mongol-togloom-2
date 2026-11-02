@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 
 const { randomUUID, randomInt } = require('node:crypto');
 const MAX_PLAYERS = 12;
+const PORT = process.env.PORT || 3000;
 
 function createLobbyServer() {
   const app = express();
@@ -17,6 +18,8 @@ function createLobbyServer() {
   let game = null;
   const sessions = new Map();
 
+  app.get('/healthz', (_req, res) => res.json({ ok: true }));
+
   // Serve the existing application in place, without exposing Node dependencies or tests.
   app.use((req, res, next) => {
     let pathname;
@@ -24,12 +27,15 @@ function createLobbyServer() {
     catch { return res.sendStatus(400); }
     const parts = pathname.split('/');
     if (parts.some(part => part.startsWith('.') || ['node_modules', 'tests'].includes(part)) ||
-        ['server.js', 'package.json', 'package-lock.json'].includes(parts.at(-1))) {
+        ['server.js', 'package.json', 'package-lock.json'].includes(parts.at(-1)) ||
+        /\.(?:md|ya?ml|log|cjs)$/u.test(pathname)) {
       return res.sendStatus(404);
     }
     next();
   });
   app.use(express.static(path.join(__dirname)));
+  // Do not return Express error stacks or local filesystem paths to browsers.
+  app.use((_error, _req, res, _next) => res.sendStatus(500));
 
   function snapshot() {
     return {
@@ -124,16 +130,18 @@ function createLobbyServer() {
 if (require.main === module) {
   const { httpServer } = createLobbyServer();
   httpServer.on('error', error => {
-    console.error(`Unable to start LAN server: ${error.message}`);
+    console.error(`Unable to start multiplayer server: ${error.message}`);
     process.exitCode = 1;
   });
-  httpServer.listen(3000, '0.0.0.0', () => {
-    console.log('Game menu: http://localhost:3000');
-    console.log('LAN lobby: http://localhost:3000/lobby.html');
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    const port = httpServer.address().port;
+    console.log(`Multiplayer server listening on 0.0.0.0:${port}`);
+    console.log(`Local game menu: http://localhost:${port}`);
+    console.log(`Local lobby: http://localhost:${port}/lobby.html`);
     for (const addresses of Object.values(networkInterfaces())) {
       for (const address of addresses ?? []) {
         if (address.family === 'IPv4' && !address.internal) {
-          console.log(`LAN address: http://${address.address}:3000`);
+          console.log(`LAN address: http://${address.address}:${port}`);
         }
       }
     }

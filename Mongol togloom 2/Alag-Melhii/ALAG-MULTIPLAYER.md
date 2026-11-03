@@ -1,5 +1,7 @@
 # Complete Alag Melkhii multiplayer
 
+For current startup diagnostics, persistent resume, disconnect skipping and host-only synchronized restart, see MULTIPLAYER-RELIABILITY.md.
+
 ## Root cause and fix
 
 The previous Stage 2 implementation intentionally stopped after rolling: `select()` returned immediately in multiplayer, choice buttons were disabled, and the server stored no logical board or selection handler. Selection is now enabled through `game:select`, validated and committed by the server. Both eligible-choice buttons and the existing Three.js raycast use the same request path. No group is hidden and no score is awarded optimistically.
@@ -57,4 +59,4 @@ Physical visual, camera and cross-network acceptance still requires the browsers
 
 ## Existing limits
 
-State and sessions remain in memory on one server instance. A restart/redeploy resets the game. There is one shared lobby, no private rooms, and no multiplayer reset/rematch UI. An Alag Melkhii player who disconnects retains their turn and must reconnect to continue; disconnection does not invent a new elimination rule. Slow/background clients may finish their dice animation later and then catch up to the latest snapshot. Horse Racing's existing disconnect policy is unchanged.
+State and sessions remain in memory on one server instance. A restart/redeploy resets the game. There is one shared lobby, no private rooms, and host-only synchronized restart is available in-game. An offline Alag current turn is skipped after a reconnect grace period; seat, score and elimination state remain available on return. Slow/background clients may finish their dice animation later and then catch up to the latest snapshot. Horse Racing's existing disconnect policy is unchanged.

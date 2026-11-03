@@ -1,5 +1,7 @@
 # Horse Racing multiplayer
 
+For persistent resume and host-only synchronized restart, see MULTIPLAYER-RELIABILITY.md.
+
 The existing shared lobby now starts either Alag Melkhii or Horse Racing. The first joiner is host. Only the host may change the selected game or choose a Horse Racing track length of 12, 18 or 24 before starting. Everyone sees the server-approved settings. Start broadcasts the selected game and game ID. The browser maps the approved game ID to a fixed local page, never a client-provided redirect.
 
 ## Server authority and existing rules
@@ -18,7 +20,7 @@ When a position reaches the finish, the server marks that racer finished and app
 
 ## Identity, camera and disconnects
 
-The lobby and race share the existing per-tab, server-issued session token. Navigation opens a new transport socket but restores the same logical player ID, name and seat without joining again. Use one player per tab/device. The UI shows names, seats, You, positions, current turn, ranks and offline status.
+The lobby and race share the server-issued session token, now persisted in localStorage with tab-storage compatibility. Navigation opens a new transport socket but restores the same logical player ID, name and seat without joining again. Use one player per tab/device. The UI shows names, seats, You, positions, current turn, ranks and offline status.
 
 The shared MediaPipe detector/model is unchanged. A local recognized gesture invokes the same turn-validated throw request as the button; a non-current player's gesture cannot submit a throw. Video processing stays in the browser and is never uploaded.
 
@@ -56,7 +58,7 @@ The suite covers host-only game/track selection, synchronized start, identity re
 
 - One shared lobby/game, up to 12 players, no private rooms or account system.
 - In-memory state/session storage: server restart, redeploy or instance replacement resets the game. Keep one instance; no cross-instance shared store is added.
-- No multiplayer rematch/reset UI. Restart the server/service and return to the lobby for a fresh game.
+- The host can confirm a synchronized restart in the game UI; no second join is required.
 - A connected player who never throws has no idle timeout. Disconnected players are skipped, retain their positions and need to reconnect to finish; all-offline unfinished races wait.
 - Slow/background browsers may finish their local animation later than other devices; authoritative results, positions and turns remain shared. Browser audio permission/autoplay restrictions still apply.
 - Alag Melkhii remains Stage 2, ending at dice/highlighting. No later Alag Melkhii stage is implemented.

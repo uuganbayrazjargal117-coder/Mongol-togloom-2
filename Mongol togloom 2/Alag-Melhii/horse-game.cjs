@@ -7,15 +7,17 @@ const ANIMATION_MS = 4000;
 function createHorseGame(roster, trackLength, publish, {
   randomFace = () => randomInt(0, 4),
   animationMs = ANIMATION_MS,
-  disconnectGraceMs = 15000
+  disconnectGraceMs = 15000,
+  hostId = roster[0].id
 } = {}) {
-  const state = {
-    id: randomUUID(), gameType: 'horse', started: true, finished: false,
+  const initialState = () => ({
+    id: randomUUID(), hostId, gameType: 'horse', started: true, finished: false,
     players: roster.map(p => ({ ...p, connected: true, position: 0, finished: false })),
     trackLength, currentPlayerId: roster[0].id, currentSeat: roster[0].seat,
     turnNumber: 1, phase: 'ready', faces: [], lastThrow: null,
     ranking: [], winnerId: null
-  };
+  });
+  let state = initialState();
   let animationTimer;
   const disconnectTimers = new Map();
   const snapshot = () => structuredClone(state);
@@ -81,7 +83,9 @@ function createHorseGame(roster, trackLength, publish, {
     };
     state.finished = state.ranking.length === state.players.length;
     broadcast();
+    const generation = state.id;
     animationTimer = setTimeout(() => {
+      if (state.id !== generation) return;
       if (state.finished) {
         state.phase = 'finished';
         state.currentPlayerId = null;
@@ -97,7 +101,19 @@ function createHorseGame(roster, trackLength, publish, {
     for (const timer of disconnectTimers.values()) clearTimeout(timer);
     disconnectTimers.clear();
   }
-  return { snapshot, throwFor, setConnected, close };
+  function restart() {
+    const connections = new Map(state.players.map(p => [p.id, p.connected]));
+    close();
+    state = initialState();
+    state.players.forEach(p => { p.connected = connections.get(p.id) === true; });
+    const first = state.players.find(p => p.connected);
+    state.currentPlayerId = first?.id ?? null;
+    state.currentSeat = first?.seat ?? null;
+    state.phase = first ? 'ready' : 'waiting';
+    broadcast();
+    return state.id;
+  }
+  return { snapshot, throwFor, setConnected, close, restart };
 }
 
 module.exports = { createHorseGame };

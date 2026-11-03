@@ -108,9 +108,9 @@ test('the existing raycast click routes the mesh group ID into the multiplayer r
     requested, structuredClone, THREE: { Vector2: class {} } };
   vm.createContext(context);
   vm.runInContext(prefix + `
-    multiplayer={requestSelect:id=>requested.push(id)};
+    multiplayer={requestSelect:id=>requested.push(id),canSelect:id=>id==='head'};
     const target=groups.find(g=>g.id==='head');target.objects=[{visible:true}];
-    meshes=[{visible:true,userData:{group:target}}];camera={};
+    meshes=[{visible:true,userData:{group:groups.find(g=>g.id==='neck')}},{visible:true,userData:{group:target}}];camera={};
     renderer={domElement:{getBoundingClientRect:()=>({left:0,top:0,width:400,height:600})}};
     const ray={setFromCamera(){},intersectObjects:objects=>[ {object:objects[0]} ]};
     const handler=e=>{${click[1]}};

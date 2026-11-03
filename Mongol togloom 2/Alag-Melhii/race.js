@@ -19,9 +19,10 @@ function showNetworkFaces(faces){
   if(f===0)label.style.color='#8a1726';return label;
  }));
 }
-function renderNetworkControls({state,playerId,canThrow}){
+function renderNetworkControls({state,playerId,canThrow,canRestart=false}){
  $('throw').disabled=!canThrow;
- $('new-game').disabled=true;
+ $('new-game').disabled=!canRestart;
+ if(state)$('new-game').hidden=state.hostId!==playerId;
  if(!raceReady||!state)return;
  const currentPlayer=state.players.find(p=>p.id===state.currentPlayerId);
  $('turn').textContent=state.finished?'Race finished':currentPlayer?`${currentPlayer.name} · Seat ${currentPlayer.seat+1}`:'Waiting for players to reconnect';
@@ -36,11 +37,15 @@ function renderNetworkControls({state,playerId,canThrow}){
  }));
  racers.forEach((r,i)=>{r.outline.visible=!state.finished&&state.players[i]?.id===state.currentPlayerId;});
 }
-async function applyHorseState(state,{animate}){
+async function applyHorseState(state,{animate,signal}){
+ if(signal?.aborted)return;
+ const reset=networkBoardGame!==state.id;
  length=state.trackLength;
- if(networkBoardGame!==state.id||racers.length!==state.players.length||Number($('track-length').value)!==length){
-  $('track-length').value=String(length);makeBoard(state.players.length,state.players.map(p=>p.seat+1));networkBoardGame=state.id;
+ if(networkBoardGame===null||racers.length!==state.players.length||Number($('track-length').value)!==length){
+  $('track-length').value=String(length);makeBoard(state.players.length,state.players.map(p=>p.seat+1));
  }
+ networkBoardGame=state.id;
+ if(reset){busy=false;bones.forEach((m,i)=>{m.position.set((1.5-i)*1.28,.5,0);m.rotation.set(0,0,sideAngles[i]);});showNetworkFaces([0,1,2,3]);}
  $('race-setup').hidden=true;$('track-length').disabled=true;$('race-players').disabled=true;$('begin').disabled=true;
  $('track-label').textContent=`${length} шагайн зам`;
  active=!state.finished;current=state.players.findIndex(p=>p.id===state.currentPlayerId);
@@ -55,9 +60,9 @@ async function applyHorseState(state,{animate}){
   $('face-labels').replaceChildren(...names.map(()=>{const el=document.createElement('span');el.textContent='…';return el;}));
   // Audio decoding never delays the network animation or holds up the server turn.
   void playShagaiSound();
-  await animateThrow(last.faces);showNetworkFaces(last.faces);
+  await animateThrow(last.faces);if(signal?.aborted)return;showNetworkFaces(last.faces);
   const actor=state.players.findIndex(p=>p.id===last.playerId);
-  await animateHorse(racers[actor],{position:last.position});busy=false;
+  await animateHorse(racers[actor],{position:last.position});if(signal?.aborted)return;busy=false;
  }else if(state.faces.length){
   showNetworkFaces(state.faces);
   bones.forEach((m,i)=>{m.rotation.set(0,0,sideAngles[state.faces[i]]);});
@@ -99,7 +104,7 @@ function animateThrow(faces){return new Promise(resolve=>{throwMotion={start:per
 function animateHorse(horse,target){return new Promise(resolve=>{moveMotion={start:performance.now(),duration:reduced?150:800,horse,from:horse.mesh.position.x,to:xAt(target.position),resolve};});}
 async function roll(){if(multiplayerMode){multiplayer?.requestThrow();return;}if(!active||busy)return;busy=true;$('throw').disabled=true;$('new-game').disabled=true;$('result').textContent='Дөрвөн шагай хаяж байна…';$('face-labels').replaceChildren(...names.map(()=>{let s=document.createElement('span');s.textContent='…';return s;}));const faces=Array.from({length:4},()=>Math.floor(Math.random()*4));await playShagaiSound();await animateThrow(faces);$('face-labels').replaceChildren(...faces.map(f=>{const s=document.createElement('span');s.textContent=names[f];if(f===0)s.style.color='#8a1726';return s;}));const r=racers[current],result=advance(r,faces,length);await animateHorse(r,result);r.position=result.position;let message=`Тоглогч ${current+1}: `+(result.different?'Дөрвөн бэрх! 4 алхам.':`${result.horses} морь буулаа.`);if(result.steps===0)message+=' Байрандаа үлдэнэ.';else message+=` ${r.position} / ${length} шагай.`;
  if(r.position===length){r.finished=true;ranking.push(current);message=`Тоглогч ${current+1} ${ranking.length}-р байранд барианд орлоо!`;}if(ranking.length===racers.length){active=false;message+=` Тоглоом дууслаа. Түрүү: Тоглогч ${ranking[0]+1}.`;}busy=false;$('new-game').disabled=false;$('result').textContent=message;update();if(active)next();}
-$('begin').onclick=start;$('throw').onclick=roll;$('new-game').onclick=()=>{if(!multiplayerMode&&!busy)$('race-setup').hidden=false;};$('rules').onclick=()=>$('race-help').showModal();$('close-help').onclick=()=>$('race-help').close();
+$('begin').onclick=start;$('throw').onclick=roll;$('new-game').onclick=()=>{if(multiplayerMode){multiplayer?.requestRestart();return;}if(!busy)$('race-setup').hidden=false;};$('rules').onclick=()=>$('race-help').showModal();$('close-help').onclick=()=>$('race-help').close();
 function makeBoneSurface(){
   const size=128,color=new Uint8Array(size*size*4),bump=new Uint8Array(size*size*4);
   let seed=108;const random=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
@@ -121,7 +126,7 @@ async function init(){try{const response=await fetch('./race-bone.json');if(!res
 if(multiplayerMode){
  $('race-setup').hidden=true;$('new-game').disabled=true;
  $('result').textContent='Connecting to Horse Racing...';
- if(typeof io==='function')multiplayer=createHorseMultiplayer({applyState:applyHorseState,renderControls:renderNetworkControls,onStatus:text=>{$('result').textContent=text;}});
+ if(typeof io==='function')multiplayer=createHorseMultiplayer({applyState:applyHorseState,renderControls:renderNetworkControls,cancelAnimations:()=>{const oldThrow=throwMotion,oldMove=moveMotion;throwMotion=null;moveMotion=null;oldThrow?.resolve();oldMove?.resolve();busy=false;},onStatus:text=>{$('result').textContent=text;}});
  else $('result').textContent='Server unavailable. Open the race through the multiplayer lobby.';
 }
 setupHandThrow({noun:'шагай',canThrow:()=>multiplayerMode?Boolean(multiplayer?.canThrow()):active&&!busy&&$('race-setup').hidden,throwDice:roll});

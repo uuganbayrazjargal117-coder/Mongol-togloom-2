@@ -2,18 +2,20 @@ const { randomUUID, randomInt } = require('node:crypto');
 const alagRulesReady = import('./alag-rules.mjs');
 
 function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
-  randomDie = () => randomInt(1, 7)
+  randomDie = () => randomInt(1, 7), hostId = roster[0].id, disconnectGraceMs = 15000
 } = {}) {
   const connected = new Set(roster.map(p => p.id));
-  const state = {
-    id: randomUUID(), gameType: 'alag', started: true, finished: false,
+  const disconnectTimers = new Map();
+  const initialState = () => ({
+    id: randomUUID(), hostId, gameType: 'alag', started: true, finished: false,
     players: roster.map(p => ({ ...p, score: 0, eliminated: false })),
     groups: ALAG_GROUPS.map(g => ({ ...g, present: true })),
     currentPlayerId: roster[0].id, currentSeat: roster[0].seat,
     turnNumber: 1, rolled: 0, rollSequence: 0, mode: 'take',
     eligibleGroupIds: [], winners: [], finishReason: null,
-    lastRoll: null, lastAction: null
-  };
+    lastRoll: null, lastAction: null, waitingForPlayers: false
+  });
+  let state = initialState();
   const snapshot = () => structuredClone(state);
   const broadcast = () => publish(snapshot());
   const current = () => state.players.find(p => p.id === state.currentPlayerId);
@@ -30,9 +32,10 @@ function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
   }
   function next() {
     const from = state.players.findIndex(p => p.id === state.currentPlayerId);
+    state.currentPlayerId = null; state.currentSeat = null;
     for (let offset = 1; offset <= state.players.length; offset++) {
       const p = state.players[(from + offset) % state.players.length];
-      if (!p.eliminated) {
+      if (!p.eliminated && connected.has(p.id)) {
         state.currentPlayerId = p.id;
         state.currentSeat = p.seat;
         break;
@@ -41,6 +44,7 @@ function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
     state.turnNumber++;
     state.rolled = 0;
     state.eligibleGroupIds = [];
+    state.waitingForPlayers = state.currentPlayerId === null;
   }
   function move(group, kind) {
     const player = current(), amount = state.rolled;
@@ -92,10 +96,37 @@ function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
     return { ok: true };
   }
   function setConnected(id, value) {
+    clearTimeout(disconnectTimers.get(id)); disconnectTimers.delete(id);
     if (value) connected.add(id);
     else connected.delete(id);
+    if (state.finished) return;
+    if (value && state.waitingForPlayers && state.players.some(p => p.id === id && !p.eliminated)) {
+      state.currentPlayerId = id; state.currentSeat = state.players.find(p => p.id === id).seat;
+      state.waitingForPlayers = false; state.turnNumber++; broadcast();
+    } else if (!value) {
+      const generation = state.id;
+      const timer = setTimeout(() => {
+        disconnectTimers.delete(id);
+        if (state.id === generation && !state.finished && !connected.has(id) && state.currentPlayerId === id) {
+          state.lastAction = { kind: 'skip', playerId: id };
+          next(); broadcast();
+        }
+      }, disconnectGraceMs);
+      timer.unref(); disconnectTimers.set(id, timer);
+    }
   }
-  return { snapshot, roll, select, setConnected };
+  function close() { for (const timer of disconnectTimers.values()) clearTimeout(timer); disconnectTimers.clear(); }
+  function restart() {
+    close();
+    state = initialState();
+    const first = state.players.find(p => connected.has(p.id));
+    state.currentPlayerId = first?.id ?? null;
+    state.currentSeat = first?.seat ?? null;
+    state.waitingForPlayers = !first;
+    broadcast();
+    return state.id;
+  }
+  return { snapshot, roll, select, setConnected, restart, close };
 }
 
 module.exports = { createAlagGame, alagRulesReady };

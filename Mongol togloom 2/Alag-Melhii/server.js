@@ -22,7 +22,7 @@ function createLobbyServer({ horseOptions, alagOptions } = {}) {
   let selectedGame = 'alag';
   let trackLength = 18;
   const sessions = new Map();
-  httpServer.on('close', () => horseGame?.close());
+  httpServer.on('close', () => { horseGame?.close(); game?.close(); });
 
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
@@ -69,6 +69,8 @@ function createLobbyServer({ horseOptions, alagOptions } = {}) {
         game.setConnected(restored, true);
         socket.emit('game:state', game.snapshot());
       }
+    } else if (token) {
+      socket.emit('session:invalid');
     }
     // Connections do not occupy a seat until Join Game is accepted.
     socket.emit('lobby:state', snapshot());
@@ -122,19 +124,31 @@ function createLobbyServer({ horseOptions, alagOptions } = {}) {
       started = true;
       const roster = snapshot().players;
       if (selectedGame === 'horse') {
-        horseGame = createHorseGame(roster, trackLength, state => io.emit('horse:state', state), horseOptions);
+        horseGame = createHorseGame(roster, trackLength, state => io.emit('horse:state', state), { ...horseOptions, hostId });
         for (const p of roster) {
           horseGame.setConnected(p.id, [...io.sockets.sockets.values()].some(s => s.data.playerId === p.id));
         }
         io.emit('horse:state', horseGame.snapshot());
       } else {
-        game = createAlagGame(roster, state => io.emit('game:state', state), alagRules, alagOptions);
+        game = createAlagGame(roster, state => io.emit('game:state', state), alagRules, { ...alagOptions, hostId });
         for (const p of roster) game.setConnected(p.id, [...io.sockets.sockets.values()].some(s => s.data.playerId === p.id));
         io.emit('game:state', game.snapshot());
       }
       io.emit('lobby:started', { selectedGame, gameId: horseGame?.snapshot().id ?? game.snapshot().id });
       broadcast();
       reply({ ok: true });
+    });
+
+    socket.on('game:restart', (payload, acknowledge) => {
+      const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
+      const active = selectedGame === 'horse' ? horseGame : game;
+      if (!socket.connected || !players.has(socket.data.playerId) || socket.data.playerId !== hostId) {
+        return reply({ ok: false, error: 'Only the host can restart the game.' });
+      }
+      if (!started || !active || payload?.gameId !== active.snapshot().id) {
+        return reply({ ok: false, error: 'This restart request is stale or there is no active game.' });
+      }
+      reply({ ok: true, gameId: active.restart() });
     });
 
     socket.on('game:roll', (payload, acknowledge) => {

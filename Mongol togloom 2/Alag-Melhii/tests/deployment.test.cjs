@@ -17,7 +17,7 @@ test('deployment serves runtime assets and health without exposing private files
     if(asset.endsWith('.wasm'))assert.match(response.headers.get('content-type'),/application\/wasm/);
     assert.ok((await response.arrayBuffer()).byteLength>0,asset);
   }
-  for(const asset of ['/race-multiplayer.mjs','/race-logic.mjs','/shagai-audio.js','/alag-rules.mjs','/alag-multiplayer.mjs']){
+  for(const asset of ['/race-multiplayer.mjs','/race-logic.mjs','/shagai-audio.js','/alag-rules.mjs','/alag-multiplayer.mjs','/alag-startup.mjs','/multiplayer-session.mjs','/session-storage.mjs','/resume-game.mjs']){
     const response=await fetch(base+asset);assert.equal(response.status,200,asset);
     assert.match(response.headers.get('content-type'),/javascript/);await response.arrayBuffer();
   }
@@ -33,13 +33,13 @@ test('deployment serves runtime assets and health without exposing private files
   }
 });
 test('browser endpoints remain same-origin and MediaPipe stays local',()=>{
-  for(const file of ['lobby.js','alag-multiplayer.mjs']){
+  for(const file of ['lobby.js','multiplayer-session.mjs']){
     const source=fs.readFileSync(path.join(root,file),'utf8');
     assert.match(source,/(?:io|ioFactory)\(\{\s*auth:/);
     assert.doesNotMatch(source,/(?:https?|wss?):\/\/|192\.168\.|10\.\d+\.\d+\.\d+/);
   }
   const raceNetwork=fs.readFileSync(path.join(root,'race-multiplayer.mjs'),'utf8');
-  assert.match(raceNetwork,/ioFactory\(\{\s*auth:/);
+  assert.match(raceNetwork,/createMultiplayerSession/);
   assert.doesNotMatch(raceNetwork,/(?:https?|wss?):\/\/|192\.168\.|10\.\d+\.\d+\.\d+/);
   const hand=fs.readFileSync(path.join(root,'hand-throw.js'),'utf8');
   assert.match(hand,/navigator.mediaDevices.getUserMedia/);

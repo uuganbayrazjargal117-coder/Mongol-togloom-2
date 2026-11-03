@@ -1,5 +1,7 @@
 # Render deployment
 
+See MULTIPLAYER-RELIABILITY.md for persistent rejoin, synchronized restart and current device diagnostics.
+
 This app runs as one Node + Express + Socket.IO Web Service. No deployment has been performed. The repository-root render.yaml contains the nested application root and commands.
 
 ## Manual Render settings
@@ -37,9 +39,9 @@ Run npm test. In environments that block test-runner subprocesses, use node --te
 
 ## Existing limitations
 
-Alag Melkhii now supports multiplayer rolls, validated group selection, board presence, scoring, automatic returns, elimination, subsequent turns and winners/ties using the existing local rules. Direct turtle.html still offers local play. Horse Racing supports multiplayer throws, movement, subsequent turns, finish and full ranking using the existing rules; direct race.html still offers local play. Server validation ignores client-supplied identities, seats, random results, scores and winner claims; session tokens are server-issued bearer credentials kept in per-tab sessionStorage. Camera processing and video stay in the browser.
+Alag Melkhii now supports multiplayer rolls, validated group selection, board presence, scoring, automatic returns, elimination, subsequent turns and winners/ties using the existing local rules. Direct turtle.html still offers local play. Horse Racing supports multiplayer throws, movement, subsequent turns, finish and full ranking using the existing rules; direct race.html still offers local play. Server validation ignores client-supplied identities, seats, random results, scores and winner claims; session tokens are server-issued bearer credentials persisted in localStorage with tab-storage compatibility. Camera processing and video stay in the browser.
 
-There is one shared lobby/game, up to 12 players, with no private room codes. Anyone with the public URL can join available seats. Keep one server instance: state and sessions live in memory, without a shared store or Socket.IO adapter. Restart, redeploy or instance replacement resets them. A started game retains its roster when players leave and cannot be reset through the UI; restart the service for a new game. Alag Melkhii preserves an offline player's pending turn until reconnect; it does not eliminate players for disconnecting. Horse Racing broadcasts offline status and skips disconnected racers after a reconnect window; all-offline unfinished races wait for a reconnect. A sleeping/stopped instance can interrupt play. Production HTTPS/WSS, camera permission and cross-network connectivity require verification on the actual public domain after deployment.
+There is one shared lobby/game, up to 12 players, with no private room codes. Anyone with the public URL can join available seats. Keep one server instance: state and sessions live in memory, without a shared store or Socket.IO adapter. Restart, redeploy or instance replacement resets them. A started game retains its roster when players leave; the restored host can reset it using the in-game restart button. Alag Melkhii skips an offline current turn after a reconnect grace period, preserving seat and score without elimination. Horse Racing broadcasts offline status and skips disconnected racers after a reconnect window; all-offline unfinished races wait for a reconnect. A sleeping/stopped instance can interrupt play. Production HTTPS/WSS, camera permission and cross-network connectivity require verification on the actual public domain after deployment.
 
 Official references:
 - https://render.com/docs/deploy-node-express-app

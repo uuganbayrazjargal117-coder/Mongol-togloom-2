@@ -1,21 +1,24 @@
+import { createSessionStore } from './session-storage.mjs';
 (() => {
   const $ = id => document.getElementById(id);
   if (typeof io !== 'function') {
     $('connection').textContent = 'Server unavailable. Open this lobby from the running multiplayer website.';
     return;
   }
-  const socket = io({ auth: { sessionToken: sessionStorage.getItem('lan-session-token') } });
+  const sessionStore=createSessionStore();
+  let waitingForStart=false;
+  const socket = io({ auth: { sessionToken: sessionStore.getItem('lan-session-token') } });
   let playerId = null;
   socket.on('session', session => {
     playerId = session.playerId;
-    sessionStorage.setItem('lan-session-token', session.token);
+    sessionStore.setItem('lan-session-token', session.token);
     socket.auth.sessionToken = session.token;
   });
   let state = { players: [], maxPlayers: 12, hostId: null, started: false };
   let pending = false;
   // The name and server-issued session token are remembered per tab.
   let rememberedName = '';
-  try { rememberedName = sessionStorage.getItem('lan-player-name') || ''; } catch {}
+  try { rememberedName = sessionStore.getItem('lan-player-name') || ''; } catch {}
   $('player-name').value = rememberedName;
 
   function render() {
@@ -33,14 +36,15 @@
     $('player-name').disabled = Boolean(me) || pending;
     $('join').disabled = !socket.connected || Boolean(me) || pending || state.players.length >= state.maxPlayers;
     $('join').textContent = me ? 'Joined' : 'Join Game';
-    $('start').hidden = !isHost;
+    $('start').hidden = !isHost||state.started;
+    $('resume').hidden=!(me&&state.started);
     $('start').disabled = !socket.connected || pending || state.started;
     $('game-choice').value = state.selectedGame || 'alag';
     $('race-length').value = String(state.trackLength || 18);
     $('game-choice').disabled = !isHost || !socket.connected || pending || state.started;
     $('race-length').disabled = !isHost || !socket.connected || pending || state.started || state.selectedGame !== 'horse';
     $('status').textContent = state.started
-      ? 'Starting ' + (state.selectedGame === 'horse' ? 'Horse Racing' : 'Alag Melkhii') + '...'
+      ? (me?'Your saved game is ready. Return without joining again.':'A game is already in progress.')
       : me ? (isHost ? 'You are the host. Start when everyone has joined.' : `Waiting for ${host?.name || 'the host'} to start.`)
         : state.players.length >= state.maxPlayers ? 'The lobby is full.' : 'Enter your name and press Join Game.';
   }
@@ -55,7 +59,7 @@
       else if (!response?.ok) $('error').textContent = response?.error || 'The request was rejected.';
       else if (event === 'lobby:join') {
         rememberedName = payload.name.trim();
-        try { sessionStorage.setItem('lan-player-name', rememberedName); } catch {}
+        try { sessionStore.setItem('lan-player-name', rememberedName); } catch {}
       }
       render();
     };
@@ -75,7 +79,7 @@
     const pages = { alag: 'turtle.html?lan=1', horse: 'race.html?lan=1' };
     if (pages[state.selectedGame]) location.replace(pages[state.selectedGame]);
   }
-  socket.on('lobby:state', snapshot => { state = snapshot; render(); navigateToGame(); });
+  socket.on('lobby:state', snapshot => { state = snapshot; if(!state.started&&state.players.some(p=>p.id===playerId))waitingForStart=true; render(); if(waitingForStart)navigateToGame(); });
   socket.on('disconnect', () => {
     state = { players: [], maxPlayers: 12, hostId: null, started: false };
     pending = false;
@@ -90,6 +94,8 @@
     event.preventDefault();
     if (!$('join').disabled) request('lobby:join', { name: $('player-name').value });
   });
+  $('resume').addEventListener('click',navigateToGame);
+  socket.on('session:invalid',()=>{sessionStore.removeItem('lan-session-token');socket.auth.sessionToken=null;playerId=null;render();$('error').textContent='Saved session expired. Join again.';});
   $('start').addEventListener('click', () => {
     if (!$('start').disabled) request('lobby:start');
   });

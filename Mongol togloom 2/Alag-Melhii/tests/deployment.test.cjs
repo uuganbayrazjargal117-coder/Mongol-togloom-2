@@ -17,7 +17,7 @@ test('deployment serves runtime assets and health without exposing private files
     if(asset.endsWith('.wasm'))assert.match(response.headers.get('content-type'),/application\/wasm/);
     assert.ok((await response.arrayBuffer()).byteLength>0,asset);
   }
-  for(const asset of ['/race-multiplayer.mjs','/race-logic.mjs','/shagai-audio.js','/alag-rules.mjs','/alag-multiplayer.mjs','/alag-startup.mjs','/multiplayer-session.mjs','/session-storage.mjs','/resume-game.mjs']){
+  for(const asset of ['/race-multiplayer.mjs','/race-logic.mjs','/shagai-audio.js','/alag-rules.mjs','/alag-multiplayer.mjs','/alag-startup.mjs','/multiplayer-session.mjs','/session-storage.mjs','/resume-game.mjs','/game-switch-ui.mjs']){
     const response=await fetch(base+asset);assert.equal(response.status,200,asset);
     assert.match(response.headers.get('content-type'),/javascript/);await response.arrayBuffer();
   }

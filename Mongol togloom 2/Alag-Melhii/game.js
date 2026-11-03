@@ -1,3 +1,4 @@
+import { mountGameSwitch } from './game-switch-ui.mjs';
 import * as THREE from 'three';
 import { loadAlagModel } from './alag-startup.mjs';
 import { playDiceSound } from './dice-audio.js';
@@ -86,7 +87,7 @@ async function animateDie(value,{signal}={}){if(signal?.aborted)return;const cub
 import { setupHandThrow } from './hand-throw.js';
 setupHandThrow({canThrow:()=>lan?Boolean(multiplayer?.canRoll()):started&&!rolled&&!rolling&&!finished,throwDice:()=>$('roll').click()});
 
-function renderLanUI({state,playerId,canRoll,canSelect,canRestart=multiplayer?.canRestart()??false}){
+function renderLanUI({state,playerId,canRoll,canSelect,canRestart=multiplayer?.canRestart()??false,canSwitch=multiplayer?.canSwitch()??false}){
   if(!state)return;
   lanState=state;lanId=playerId;
   const current=state.players.find(p=>p.id===state.currentPlayerId);
@@ -99,6 +100,7 @@ function renderLanUI({state,playerId,canRoll,canSelect,canRestart=multiplayer?.c
     value.textContent=p.score+' bones';el.append(label,value);return el;
   }));
   $('roll').disabled=!canRoll;
+ if(state){$('switch-game').hidden=state.hostId!==playerId;$('switch-game').disabled=!canSwitch;}
   $('restart').hidden=state.hostId!==playerId;$('restart').disabled=!canRestart;
   document.querySelectorAll('#choices [data-group-id]').forEach(button=>{button.disabled=!canSelect(button.dataset.groupId);});
 }
@@ -135,7 +137,7 @@ async function applyLanState(state,{animate,signal}){
 if(lan){
   $('start-screen').hidden=true;$('restart').disabled=true;
   $('message').textContent='Connecting to Alag Melkhii...';
-  if(typeof io==='function')multiplayer=createAlagMultiplayer({applyState:applyLanState,renderControls:renderLanUI,cancelAnimations:()=>{diceAnimation?.cancel();rolling=false;},onStatus:text=>{$('message').textContent=text;}});
+  if(typeof io==='function'){multiplayer=createAlagMultiplayer({applyState:applyLanState,renderControls:renderLanUI,cancelAnimations:()=>{diceAnimation?.cancel();rolling=false;},onStatus:text=>{$('message').textContent=text;}});mountGameSwitch(multiplayer);}
   else $('message').textContent='Server unavailable. Open the game through the multiplayer lobby.';
 }
 init().then(loaded=>{if(loaded)multiplayer?.ready();});

@@ -1,3 +1,4 @@
+import { mountGameSwitch } from './game-switch-ui.mjs';
 import * as THREE from 'three';
 import {playShagaiSound, THROW_DURATION} from './shagai-audio.js';
 import {setupHandThrow} from './hand-throw.js';
@@ -19,8 +20,9 @@ function showNetworkFaces(faces){
   if(f===0)label.style.color='#8a1726';return label;
  }));
 }
-function renderNetworkControls({state,playerId,canThrow,canRestart=false}){
+function renderNetworkControls({state,playerId,canThrow,canRestart=false,canSwitch=false}){
  $('throw').disabled=!canThrow;
+ if(state){$('switch-game').hidden=state.hostId!==playerId;$('switch-game').disabled=!canSwitch;}
  $('new-game').disabled=!canRestart;
  if(state)$('new-game').hidden=state.hostId!==playerId;
  if(!raceReady||!state)return;
@@ -126,7 +128,7 @@ async function init(){try{const response=await fetch('./race-bone.json');if(!res
 if(multiplayerMode){
  $('race-setup').hidden=true;$('new-game').disabled=true;
  $('result').textContent='Connecting to Horse Racing...';
- if(typeof io==='function')multiplayer=createHorseMultiplayer({applyState:applyHorseState,renderControls:renderNetworkControls,cancelAnimations:()=>{const oldThrow=throwMotion,oldMove=moveMotion;throwMotion=null;moveMotion=null;oldThrow?.resolve();oldMove?.resolve();busy=false;},onStatus:text=>{$('result').textContent=text;}});
+ if(typeof io==='function'){multiplayer=createHorseMultiplayer({applyState:applyHorseState,renderControls:renderNetworkControls,cancelAnimations:()=>{const oldThrow=throwMotion,oldMove=moveMotion;throwMotion=null;moveMotion=null;oldThrow?.resolve();oldMove?.resolve();busy=false;},onStatus:text=>{$('result').textContent=text;}});mountGameSwitch(multiplayer);}
  else $('result').textContent='Server unavailable. Open the race through the multiplayer lobby.';
 }
 setupHandThrow({noun:'шагай',canThrow:()=>multiplayerMode?Boolean(multiplayer?.canThrow()):active&&!busy&&$('race-setup').hidden,throwDice:roll});

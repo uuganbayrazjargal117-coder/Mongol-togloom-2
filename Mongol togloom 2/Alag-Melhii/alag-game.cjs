@@ -5,6 +5,7 @@ function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
   randomDie = () => randomInt(1, 7), hostId = roster[0].id, disconnectGraceMs = 15000
 } = {}) {
   const connected = new Set(roster.map(p => p.id));
+  let closed = false;
   const disconnectTimers = new Map();
   const initialState = () => ({
     id: randomUUID(), hostId, gameType: 'alag', started: true, finished: false,
@@ -20,7 +21,7 @@ function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
   const broadcast = () => publish(snapshot());
   const current = () => state.players.find(p => p.id === state.currentPlayerId);
   function validAction(id, request) {
-    return !state.finished && connected.has(id) && current()?.id === id && !current().eliminated &&
+    return !closed && !state.finished && connected.has(id) && current()?.id === id && !current().eliminated &&
       request?.gameId === state.id && request?.turnNumber === state.turnNumber;
   }
   function finish(winners, reason) {
@@ -96,6 +97,7 @@ function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
     return { ok: true };
   }
   function setConnected(id, value) {
+    if (closed) return;
     clearTimeout(disconnectTimers.get(id)); disconnectTimers.delete(id);
     if (value) connected.add(id);
     else connected.delete(id);
@@ -107,7 +109,7 @@ function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
       const generation = state.id;
       const timer = setTimeout(() => {
         disconnectTimers.delete(id);
-        if (state.id === generation && !state.finished && !connected.has(id) && state.currentPlayerId === id) {
+        if (!closed && state.id === generation && !state.finished && !connected.has(id) && state.currentPlayerId === id) {
           state.lastAction = { kind: 'skip', playerId: id };
           next(); broadcast();
         }
@@ -115,9 +117,10 @@ function createAlagGame(roster, publish, { ALAG_GROUPS, eligibleGroups }, {
       timer.unref(); disconnectTimers.set(id, timer);
     }
   }
-  function close() { for (const timer of disconnectTimers.values()) clearTimeout(timer); disconnectTimers.clear(); }
+  function close() { closed = true; for (const timer of disconnectTimers.values()) clearTimeout(timer); disconnectTimers.clear(); }
   function restart() {
     close();
+    closed = false;
     state = initialState();
     const first = state.players.find(p => connected.has(p.id));
     state.currentPlayerId = first?.id ?? null;

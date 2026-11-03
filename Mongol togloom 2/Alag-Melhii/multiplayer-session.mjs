@@ -2,6 +2,7 @@ import { createSessionStore } from './session-storage.mjs';
 // Shared session/readiness and generation handling; game rules remain on the server.
 export function createMultiplayerSession(config, view, {
   ioFactory = globalThis.io, storage = createSessionStore(),
+  navigate = page => globalThis.location.replace(page),
   confirmRestart = () => globalThis.confirm('Тоглолтыг эхнээс нь эхлүүлэх үү?')
 } = {}) {
   let token;
@@ -12,13 +13,15 @@ export function createMultiplayerSession(config, view, {
   let applying = false, displayError = false, applied = null, queued = null, pending = null, restartPending = null;
   let seenGame = null, seenSequence = 0, activeAnimation = null, connectionRevision = 0;
   const retiredGames = new Set();
+  let transitioning = false, switchPending = null, partyTrackLength = 18;
   const readiness = () => ({ threeReady, sessionReady, socketReady: socket.connected, gameStateReady: Boolean(state), stateApplied: applied === state });
   const canAct = () => Boolean(threeReady && sessionReady && socket.connected && state && applied === state &&
-    !applying && !pending && !restartPending && !displayError && !state.finished && state.currentPlayerId === playerId &&
+    !transitioning && !switchPending && !applying && !pending && !restartPending && !displayError && !state.finished && state.currentPlayerId === playerId &&
     (!state.players || state.players.some(p => p.id === playerId && !p.eliminated)));
-  const canRestart = () => Boolean(sessionReady && socket.connected && state && playerId === (state.hostId ?? hostId) && !restartPending);
+  const canRestart = () => Boolean(!transitioning && !switchPending && sessionReady && socket.connected && state && playerId === (state.hostId ?? hostId) && !restartPending);
+  const canSwitch = () => canRestart();
   function render() {
-    try { view.renderControls({ state, playerId, canAct: canAct(), canRestart: canRestart(), readiness: readiness() }); }
+    try { view.renderControls({ state, playerId, canAct: canAct(), canRestart: canRestart(), canSwitch: canSwitch(), readiness: readiness() }); }
     catch (error) {
       displayError = true;
       console.error('[multiplayer:controls] Control rendering failed; this is not a WebGL/model failure.', error);
@@ -29,6 +32,7 @@ export function createMultiplayerSession(config, view, {
     view.cancelAnimations?.();
     pending = null;
     restartPending = null;
+    switchPending = null;
     applied = null;
     queued = null;
     displayError = false;
@@ -78,9 +82,26 @@ export function createMultiplayerSession(config, view, {
     view.onStatus('Saved session expired. Return to the multiplayer lobby to join.');
   });
   socket.on(config.stateEvent, snapshot => {
+    if (transitioning) return;
     if (retiredGames.has(snapshot.id)) return;
     if (state && state.id !== snapshot.id) { retiredGames.add(state.id); invalidate(); }
-    state = snapshot; queued = snapshot; render(); void drain();
+    state = snapshot; queued = snapshot;
+    storage.setItem('lan-current-game', JSON.stringify({ gameId: state.id, gameType: config.gameType }));
+    render(); void drain();
+  });
+  function enterGame(targetGame, gameId) {
+    const pages = { alag: 'turtle.html?lan=1', horse: 'race.html?lan=1' };
+    if (transitioning || !sessionReady || !pages[targetGame] || targetGame === config.gameType) return;
+    transitioning = true;
+    if (state) retiredGames.add(state.id);
+    invalidate(); render();
+    storage.setItem('lan-current-game', JSON.stringify({ gameId, gameType: targetGame }));
+    view.onStatus('Host тоглоомыг '+(targetGame === 'horse' ? 'Морь уралдуулах' : 'Алаг мэлхий')+' болгон сольж байна...');
+    navigate(pages[targetGame]);
+  }
+  socket.on('game:switched', message => {
+    if (state && message.previousGameId !== state.id) return;
+    enterGame(message.targetGame, message.gameId);
   });
   socket.on('connect', () => { pending = null; restartPending = null; render(); });
   socket.on('disconnect', () => {
@@ -92,7 +113,11 @@ export function createMultiplayerSession(config, view, {
     render(); view.onStatus('Cannot reach the multiplayer server. Reconnecting...');
   });
   socket.on('lobby:state', lobby => {
+    partyTrackLength = lobby.trackLength ?? partyTrackLength;
     hostId = lobby.hostId; render();
+    if (lobby.started && lobby.selectedGame !== config.gameType && sessionReady && lobby.players?.some(p => p.id === playerId)) {
+      enterGame(lobby.selectedGame, lobby.currentGameId); return;
+    }
     if (!lobby.started || lobby.selectedGame !== config.gameType) view.onStatus('No active game of this type. Return to the multiplayer lobby.');
     else if (!sessionReady) {
       console.error('[multiplayer:session-restoration] No server-issued player identity was restored.');
@@ -113,7 +138,19 @@ export function createMultiplayerSession(config, view, {
     return true;
   }
   return {
-    canAct, canRestart, request, readiness,
+    canAct, canRestart, canSwitch, request, readiness,
+    switchSettings: () => ({ gameType: config.gameType, trackLength: state?.trackLength ?? partyTrackLength }),
+    requestSwitch(targetGame, trackLength) {
+      if (!canSwitch() || !['alag', 'horse'].includes(targetGame) || targetGame === config.gameType || ![12,18,24].includes(trackLength)) return false;
+      const requestToken = { gameId: state.id, connectionRevision };
+      switchPending = requestToken; render();
+      socket.timeout(5000).emit('game:switch', { gameId: state.id, targetGame, trackLength }, (error, response) => {
+        if (transitioning || switchPending !== requestToken || state.id !== requestToken.gameId || connectionRevision !== requestToken.connectionRevision) return;
+        switchPending = null; render();
+        if (error || !response?.ok) view.onStatus(response?.error || 'The server did not respond. Check your connection.');
+      });
+      return true;
+    },
     requestRestart() { return canRestart() && confirmRestart() ? request('game:restart', {}, true) : false; },
     ready() { threeReady = true; render(); void drain(); }
   };

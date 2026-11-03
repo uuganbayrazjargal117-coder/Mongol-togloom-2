@@ -10,6 +10,7 @@ async function rendererFixture({ playerId = 'a', failure } = {}) {
   const rules = await import('../alag-rules.mjs');
   const network = await import('../alag-multiplayer.mjs');
   const { loadAlagModel } = await import('../alag-startup.mjs');
+  const { mountGameSwitch } = await import('../game-switch-ui.mjs');
   const elements = new Map(), errors = [], handlers = new Map(), requests = [];
   class Element {
     children = []; style = {}; dataset = {}; classList = { toggle() {} }; value = 2;
@@ -46,7 +47,7 @@ async function rendererFixture({ playerId = 'a', failure } = {}) {
         return model;
       } };
     }),
-    document, io() {}, URLSearchParams, location: { search: '?lan=1' }, devicePixelRatio: 1,
+    document, mountGameSwitch: client => mountGameSwitch(client, document, () => true), io() {}, URLSearchParams, location: { search: '?lan=1' }, devicePixelRatio: 1,
     matchMedia: () => ({ matches: false }), ResizeObserver: class { observe() {} },
     setupHandThrow() {}, playDiceSound() {}, performance, structuredClone,
     console: { error: (...args) => errors.push(args), debug() {} }

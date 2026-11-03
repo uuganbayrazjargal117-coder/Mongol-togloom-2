@@ -50,6 +50,7 @@ function createLobbyServer({ horseOptions, alagOptions } = {}) {
       maxPlayers: MAX_PLAYERS,
       selectedGame,
       trackLength,
+      currentGameId: horseGame?.snapshot().id ?? game?.snapshot().id ?? null,
       started
     };
   }
@@ -137,6 +138,44 @@ function createLobbyServer({ horseOptions, alagOptions } = {}) {
       io.emit('lobby:started', { selectedGame, gameId: horseGame?.snapshot().id ?? game.snapshot().id });
       broadcast();
       reply({ ok: true });
+    });
+
+    socket.on('game:switch', async (payload, acknowledge) => {
+      const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
+      const rules = payload?.targetGame === 'alag' ? await alagRulesReady : null;
+      if (!socket.connected || !players.has(socket.data.playerId) || socket.data.playerId !== hostId) {
+        return reply({ ok: false, error: 'Only the host can switch games.' });
+      }
+      const active = selectedGame === 'horse' ? horseGame : game;
+      if (!started || !active || payload?.gameId !== active.snapshot().id) {
+        return reply({ ok: false, error: 'This switch request is stale or there is no active game.' });
+      }
+      if (!['alag', 'horse'].includes(payload.targetGame) || payload.targetGame === selectedGame ||
+          Object.keys(payload).some(key => !['gameId', 'targetGame', 'trackLength'].includes(key)) ||
+          (payload.targetGame === 'horse' && ![12, 18, 24].includes(payload.trackLength)) ||
+          (payload.trackLength !== undefined && ![12, 18, 24].includes(payload.trackLength)) || players.size < 2) {
+        return reply({ ok: false, error: 'Choose another valid game and track length with at least two joined players.' });
+      }
+      const previousGameId = active.snapshot().id;
+      const target = payload.targetGame, length = payload.trackLength ?? trackLength;
+      const roster = snapshot().players;
+      let replacement;
+      const publish = state => {
+        if ((target === 'horse' ? horseGame : game) === replacement) io.emit(target === 'horse' ? 'horse:state' : 'game:state', state);
+      };
+      replacement = target === 'horse'
+        ? createHorseGame(roster, length, publish, { ...horseOptions, hostId })
+        : createAlagGame(roster, publish, rules, { ...alagOptions, hostId });
+      for (const p of roster) replacement.setConnected(p.id, [...io.sockets.sockets.values()].some(s => s.data.playerId === p.id));
+      replacement.restart(); // Fresh state, first connected seat; no premature candidate broadcasts.
+      active.close(); game = null; horseGame = null;
+      selectedGame = target; trackLength = length;
+      if (target === 'horse') horseGame = replacement; else game = replacement;
+      const state = replacement.snapshot();
+      io.emit('game:switched', { previousGameId, gameId: state.id, targetGame: target, trackLength });
+      io.emit(target === 'horse' ? 'horse:state' : 'game:state', state);
+      broadcast();
+      reply({ ok: true, gameId: state.id });
     });
 
     socket.on('game:restart', (payload, acknowledge) => {

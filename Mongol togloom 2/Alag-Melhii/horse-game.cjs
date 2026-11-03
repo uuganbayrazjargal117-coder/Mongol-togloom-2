@@ -19,11 +19,12 @@ function createHorseGame(roster, trackLength, publish, {
   });
   let state = initialState();
   let animationTimer;
+  let closed = false;
   const disconnectTimers = new Map();
   const snapshot = () => structuredClone(state);
   const broadcast = () => publish(snapshot());
   function next(afterId) {
-    if (state.finished) return;
+    if (closed || state.finished) return;
     const start = state.players.findIndex(p => p.id === afterId);
     let nextPlayer;
     for (let offset = 1; offset <= state.players.length; offset++) {
@@ -37,6 +38,7 @@ function createHorseGame(roster, trackLength, publish, {
     broadcast();
   }
   function setConnected(id, connected) {
+    if (closed) return;
     const player = state.players.find(p => p.id === id);
     if (!player || player.connected === connected) return;
     player.connected = connected;
@@ -48,7 +50,9 @@ function createHorseGame(roster, trackLength, publish, {
     }
     broadcast();
     if (!connected && !state.finished) {
+      const generation = state.id;
       const timer = setTimeout(() => {
+        if (closed || state.id !== generation) return;
         disconnectTimers.delete(id);
         if (!player.connected && state.currentPlayerId === id && state.phase === 'ready') next(id);
       }, disconnectGraceMs);
@@ -59,7 +63,7 @@ function createHorseGame(roster, trackLength, publish, {
   async function throwFor(id, request, isConnected = () => true) {
     const { advance } = await rules;
     const player = state.players.find(p => p.id === id);
-    if (!isConnected() || !player?.connected || state.finished || state.phase !== 'ready' ||
+    if (closed || !isConnected() || !player?.connected || state.finished || state.phase !== 'ready' ||
         state.currentPlayerId !== id || request?.gameId !== state.id ||
         request?.turnNumber !== state.turnNumber || player.finished) {
       return { ok: false, error: 'You cannot throw now. Wait for your current turn.' };
@@ -97,6 +101,7 @@ function createHorseGame(roster, trackLength, publish, {
     return { ok: true };
   }
   function close() {
+    closed = true;
     clearTimeout(animationTimer);
     for (const timer of disconnectTimers.values()) clearTimeout(timer);
     disconnectTimers.clear();
@@ -104,6 +109,7 @@ function createHorseGame(roster, trackLength, publish, {
   function restart() {
     const connections = new Map(state.players.map(p => [p.id, p.connected]));
     close();
+    closed = false;
     state = initialState();
     state.players.forEach(p => { p.connected = connections.get(p.id) === true; });
     const first = state.players.find(p => p.connected);

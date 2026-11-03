@@ -9,7 +9,7 @@ function event(socket, name, predicate = () => true) {
     socket.on(name,listener);
   });
 }
-test('LAN lobby and authoritative Alag Melkhii Stage 2', async t => {
+test('LAN lobby and authoritative Alag Melkhii roll/session regression', async t => {
   const { httpServer, io } = createLobbyServer();
   const clients=[];
   t.after(async()=>{clients.forEach(s=>s.disconnect());await new Promise(r=>io.close(r));});
@@ -48,7 +48,7 @@ test('LAN lobby and authoritative Alag Melkhii Stage 2', async t => {
     assert.equal((await emit(host,'lobby:start')).ok,false);
     assert.equal((await emit(spectator,'lobby:join',{name:'Late join'})).ok,false);
   });
-  let restoredHost,restoredGuest;
+  let restoredHost,restoredGuest,restoredGame;
   await t.test('page navigation restores both identities, seats and the same game without joining again',async()=>{
     const hostToken=host.session.token,guestToken=guest.session.token,hostId=host.session.playerId,guestId=guest.session.playerId;
     host.disconnect();guest.disconnect();
@@ -59,6 +59,7 @@ test('LAN lobby and authoritative Alag Melkhii Stage 2', async t => {
     }
     const [a,sa]=await resume(hostToken),[b,sb]=await resume(guestToken);
     restoredHost=a;restoredGuest=b;
+    restoredGame=sa;
     assert.deepEqual(sa,sb);assert.equal(a.session.playerId,hostId);assert.equal(b.session.playerId,guestId);
     assert.deepEqual(sa.players.map(p=>p.seat),[0,1]);
   });
@@ -68,7 +69,7 @@ test('LAN lobby and authoritative Alag Melkhii Stage 2', async t => {
   });
   await t.test('server generates 1-6 and broadcasts the same result to all; repeated rolls rejected',async()=>{
     const a=event(restoredHost,'game:state'),b=event(restoredGuest,'game:state');
-    assert.equal((await emit(restoredHost,'game:roll',{result:99,seat:11})).ok,true);
+    assert.equal((await emit(restoredHost,'game:roll',{gameId:restoredGame.id,turnNumber:restoredGame.turnNumber,result:99,seat:11})).ok,true);
     const state=await a;assert.deepEqual(state,await b);assert.ok(Number.isInteger(state.rolled)&&state.rolled>=1&&state.rolled<=6);
     assert.equal(state.rollSequence,1);assert.equal(state.currentSeat,0);
     assert.equal((await emit(restoredHost,'game:roll',{})).ok,false);

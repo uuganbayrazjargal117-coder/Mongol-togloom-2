@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { playDiceSound } from './dice-audio.js';
+import { ALAG_GROUPS, eligibleGroups } from './alag-rules.mjs';
+import { createAlagMultiplayer, syncAlagBoard } from './alag-multiplayer.mjs';
+const lan=new URLSearchParams(location.search).get('lan')==='1';
+let multiplayer=null,lanState=null,lanId=null;
 const $=id=>document.getElementById(id), groups=[];let scene,camera,renderer,geometry,meshes=[],count=2,player=0,scores=[],eliminated=[],rolled=0,mode='take',finished=false,rolling=false,started=false;
 const colors={back:0x68261d,leg:0xeb97b2,foot:0x318439,neck:0x191e58,head:0x58c5c8,eye:0xa2a9dc,ear:0x811c19,tail:0x382b25,heart:0xef3836,kidney:0xf3d029,bladder:0x3d8dde,fire:0xe45433,wood:0x25a8df,metal:0xf2b653,element:0x62b4f3};
-function group(name,n,color,positions){groups.push({name,n,color,positions,present:true,objects:[]});}
+function group(name,n,color,positions){const definition=ALAG_GROUPS.find(g=>g.name===name);if(!definition||definition.n!==n)throw Error('Board group definition mismatch');groups.push({id:definition.id,name,n,color,positions,present:true,objects:[]});}
 // Positions traced from the supplied reference photograph (1200 × 1694).
 const point=(x,y,height=0,rotation=0)=>[(x-600)/100,(y-1000)/100,height,rotation];
 const points=(pairs,height=0,rotation=0)=>pairs.map(([x,y])=>point(x,y,height,rotation));
@@ -33,12 +37,12 @@ group('Мод',5,colors.wood,[point(281,974,0,1.57),point(278,1035,0,1.57),point
 group('Төмөр',3,colors.metal,[point(880,1009,0,1.55+Math.PI),point(1006,1050,0,1.15+Math.PI),point(1105,1120,0,.85+Math.PI)]);
 const dice=['','⚀','⚁','⚂','⚃','⚄','⚅'];
 function reset(){count=Math.max(1,Math.min(12,Math.floor(Number($('players').value)||2)));$('players').value=count;player=0;scores=Array(count).fill(0);eliminated=Array(count).fill(false);rolled=0;finished=false;for(const g of groups){g.present=true;g.objects.forEach(m=>m.visible=true);}if(renderer)$('roll').disabled=!started;setDie(5);$('message').textContent='Шоо хаяад авах эрхтнээ сонгоорой.';update();}
-function update(){let remaining=groups.filter(g=>g.present).reduce((a,g)=>a+g.n,0);$('remaining').textContent=remaining+' шагай үлдсэн';$('turn').textContent=finished?'Тоглоом дууслаа':`Тоглогч ${player+1}`;$('scores').replaceChildren(...scores.map((s,i)=>{let el=document.createElement('div');el.className='score'+(i===player&&!finished?' active':'')+(eliminated[i]?' eliminated':'');let label=document.createElement('span');label.textContent=`Тоглогч ${i+1}${eliminated[i]?' · хасагдсан':''}`;let num=document.createElement('strong');num.textContent=s+' шагай';el.append(label,num);return el;}));$('choices').replaceChildren();for(const g of groups){g.objects.forEach(m=>{const highlighted=Boolean(valid(g));m.material.emissive.setHex(0);m.material.emissiveIntensity=0;if(m.userData.outline)m.userData.outline.visible=highlighted;});}if(rolled){for(const g of eligible()){let b=document.createElement('button');b.className='eligible-choice';b.textContent=(mode==='return'?'Буцаах: ':'')+g.name+` · ${g.n}`;b.disabled=lan;b.onclick=()=>select(g);$('choices').append(b);}}}
-function eligible(){return groups.filter(g=>g.n===rolled&&(mode==='take'?g.present:(!g.present&&scores[player]>=rolled)));}function valid(g){return rolled&&eligible().includes(g);}
+function update(){let remaining=groups.filter(g=>g.present).reduce((a,g)=>a+g.n,0);$('remaining').textContent=remaining+' шагай үлдсэн';$('turn').textContent=finished?'Тоглоом дууслаа':`Тоглогч ${player+1}`;$('scores').replaceChildren(...scores.map((s,i)=>{let el=document.createElement('div');el.className='score'+(i===player&&!finished?' active':'')+(eliminated[i]?' eliminated':'');let label=document.createElement('span');label.textContent=`Тоглогч ${i+1}${eliminated[i]?' · хасагдсан':''}`;let num=document.createElement('strong');num.textContent=s+' шагай';el.append(label,num);return el;}));$('choices').replaceChildren();for(const g of groups){g.objects.forEach(m=>{const highlighted=Boolean(valid(g));m.material.emissive.setHex(0);m.material.emissiveIntensity=0;if(m.userData.outline)m.userData.outline.visible=highlighted;});}if(rolled){for(const g of eligible()){let b=document.createElement('button');b.className='eligible-choice';b.textContent=(mode==='return'?'Буцаах: ':'')+g.name+` · ${g.n}`;b.dataset.groupId=g.id;b.disabled=lan&&!multiplayer?.canSelect(g.id);b.onclick=()=>select(g);$('choices').append(b);}}}
+function eligible(){return lan?groups.filter(g=>lanState?.eligibleGroupIds.includes(g.id)):eligibleGroups(groups,rolled,mode,scores[player]);}function valid(g){return rolled&&eligible().includes(g);}
 function next(){rolled=0;do{player=(player+1)%count;}while(eliminated[player]);$('roll').disabled=false;update();}
 function eliminateCurrent(){const removed=player+1,amount=rolled;eliminated[player]=true;rolled=0;const remaining=scores.map((_,i)=>i).filter(i=>!eliminated[i]);const text=`${amount} буулаа. Тоглогч ${removed} буцаах шагай хүрэлцэхгүй тул тоглоомоос хасагдлаа.`;if(remaining.length<=1){finished=true;$('roll').disabled=true;$('message').textContent=text+(remaining.length?` Тоглогч ${remaining[0]+1} хожлоо!`:' Тоглоом дууслаа.');update();}else{next();$('message').textContent=text+' Дараагийн ээлж.'}}
-function select(g){if(lan)return;if(!valid(g)||finished)return;if(mode==='take'){g.present=false;scores[player]+=g.n;}else{g.present=true;scores[player]-=g.n;}g.objects.forEach(m=>m.visible=g.present);const text=`Тоглогч ${player+1} ${g.name.toLowerCase()}${mode==='take'?' авлаа':' буцааж өрлөө'}.`;if(groups.every(x=>!x.present)){finished=true;rolled=0;const max=Math.max(...scores.filter((_,i)=>!eliminated[i])),winners=scores.map((s,i)=>!eliminated[i]&&s===max?i+1:null).filter(Boolean);$('message').textContent=`${winners.map(i=>'Тоглогч '+i).join(', ')} ${max} шагайгаар хожлоо!`;$('roll').disabled=true;update();}else{next();$('message').textContent=text+' Дараагийн ээлж.'}}
-$('roll').onclick=async()=>{if(lan){requestLanRoll();return;}if(!started||rolled||finished||rolling)return;rolling=true;$('roll').disabled=true;$('restart').disabled=true;$('message').textContent='Шоо өнхөрч байна…';const result=Math.floor(Math.random()*6)+1;await animateDie(result);rolling=false;$('restart').disabled=false;rolled=result;mode='take';$('roll').disabled=true;if(!eligible().length){mode='return';if(!eligible().length){eliminateCurrent();return;}const returningPlayer=player+1;const amount=rolled;select(eligible()[0]);$('message').textContent=`${amount} буулаа. Тоглогч ${returningPlayer} өөрийн ${amount} шагайг буцааж өрлөө.`;return;}else $('message').textContent=`${rolled} буулаа.`;update();};
+function select(g){if(lan){multiplayer?.requestSelect(g.id);return;}if(!valid(g)||finished)return;if(mode==='take'){g.present=false;scores[player]+=g.n;}else{g.present=true;scores[player]-=g.n;}g.objects.forEach(m=>m.visible=g.present);const text=`Тоглогч ${player+1} ${g.name.toLowerCase()}${mode==='take'?' авлаа':' буцааж өрлөө'}.`;if(groups.every(x=>!x.present)){finished=true;rolled=0;const max=Math.max(...scores.filter((_,i)=>!eliminated[i])),winners=scores.map((s,i)=>!eliminated[i]&&s===max?i+1:null).filter(Boolean);$('message').textContent=`${winners.map(i=>'Тоглогч '+i).join(', ')} ${max} шагайгаар хожлоо!`;$('roll').disabled=true;update();}else{next();$('message').textContent=text+' Дараагийн ээлж.'}}
+$('roll').onclick=async()=>{if(lan){multiplayer?.requestRoll();return;}if(!started||rolled||finished||rolling)return;rolling=true;$('roll').disabled=true;$('restart').disabled=true;$('message').textContent='Шоо өнхөрч байна…';const result=Math.floor(Math.random()*6)+1;await animateDie(result);rolling=false;$('restart').disabled=false;rolled=result;mode='take';$('roll').disabled=true;if(!eligible().length){mode='return';if(!eligible().length){eliminateCurrent();return;}const returningPlayer=player+1;const amount=rolled;select(eligible()[0]);$('message').textContent=`${amount} буулаа. Тоглогч ${returningPlayer} өөрийн ${amount} шагайг буцааж өрлөө.`;return;}else $('message').textContent=`${rolled} буулаа.`;update();};
 $('restart').onclick=()=>{if(lan)return;if(!scores.some(Boolean)||confirm('Одоогийн тоглолтыг дуусгаж шинээр эхлэх үү?')){started=false;$('roll').disabled=true;$('start-screen').hidden=false;$('start').focus();}};
 $('start').onclick=()=>{if(lan)return;started=true;reset();$('start-screen').hidden=true;positionCamera();$('roll').focus();};
 document.querySelectorAll('[data-count]').forEach(b=>b.onclick=()=>{$('players').value=b.dataset.count;syncPlayerPicks();});
@@ -68,62 +72,57 @@ else if(g.name==='Чих'){width=1.22;length=1.04;}
 else if(['Гал','Нүд'].includes(g.name)){width=1.42;length=1.12;}
 else if(g.name==='Толгой'){width=1.2;length=.84;}
 else if(g.name==='Хүзүү'){width=1.0;length=.9;}
-m.scale.set(width,1,length);m.userData.group=g;const outline=new THREE.Mesh(outlineGeometry,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.96,depthTest:false,depthWrite:false,toneMapped:false}));outline.renderOrder=10;glowGeometries.forEach((geo,i)=>{const halo=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:[.20,.08,.025][i],blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,toneMapped:false}));halo.renderOrder=9-i;outline.add(halo);});outline.visible=false;m.add(outline);m.userData.outline=outline;scene.add(m);meshes.push(m);g.objects.push(m);}}$('loading').remove();positionCamera();reset();$('start').disabled=false;$('start').textContent='Тоглож эхлэх';$('start-status').textContent='Тоглогчдын тоогоо сонгоод эхлээрэй.';new ResizeObserver(positionCamera).observe($('scene'));const ray=new THREE.Raycaster();renderer.domElement.addEventListener('pointerup',e=>{const b=renderer.domElement.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1),camera);const hit=ray.intersectObjects(meshes.filter(m=>m.visible),false)[0];if(hit)select(hit.object.userData.group);});const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;renderer.setAnimationLoop(()=>{const wave=reduceMotion?0:(Math.sin(performance.now()*.004)+1)*.5;for(const g of groups){if(!valid(g))continue;for(const m of g.objects){m.userData.outline.material.opacity=.90+wave*.06;m.userData.outline.children.forEach((halo,i)=>halo.material.opacity=[.20,.08,.025][i]*(.90+wave*.20));}}renderer.render(scene,camera);});}catch(err){if($('loading'))$('loading').textContent='3D дүрслэл ачаалсангүй. Хуудсыг дахин нээнэ үү.';$('start-status').textContent='Өрөг ачаалсангүй. Хуудсыг дахин нээнэ үү.';$('message').textContent='WebGL дэмждэг хөтөч дээр нээнэ үү.';console.error(err);}}
+m.scale.set(width,1,length);m.userData.group=g;const outline=new THREE.Mesh(outlineGeometry,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.96,depthTest:false,depthWrite:false,toneMapped:false}));outline.renderOrder=10;glowGeometries.forEach((geo,i)=>{const halo=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:[.20,.08,.025][i],blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,toneMapped:false}));halo.renderOrder=9-i;outline.add(halo);});outline.visible=false;m.add(outline);m.userData.outline=outline;scene.add(m);meshes.push(m);g.objects.push(m);}}$('loading').remove();positionCamera();reset();$('start').disabled=false;$('start').textContent='Тоглож эхлэх';$('start-status').textContent='Тоглогчдын тоогоо сонгоод эхлээрэй.';new ResizeObserver(positionCamera).observe($('scene'));const ray=new THREE.Raycaster();renderer.domElement.addEventListener('pointerup',e=>{const b=renderer.domElement.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2((e.clientX-b.left)/b.width*2-1,-(e.clientY-b.top)/b.height*2+1),camera);const hit=ray.intersectObjects(meshes.filter(m=>m.visible),false)[0];if(hit)select(hit.object.userData.group);});const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;renderer.setAnimationLoop(()=>{const wave=reduceMotion?0:(Math.sin(performance.now()*.004)+1)*.5;for(const g of groups){if(!valid(g))continue;for(const m of g.objects){m.userData.outline.material.opacity=.90+wave*.06;m.userData.outline.children.forEach((halo,i)=>halo.material.opacity=[.20,.08,.025][i]*(.90+wave*.20));}}renderer.render(scene,camera);});return true;}catch(err){if($('loading'))$('loading').textContent='3D дүрслэл ачаалсангүй. Хуудсыг дахин нээнэ үү.';$('start-status').textContent='Өрөг ачаалсангүй. Хуудсыг дахин нээнэ үү.';$('message').textContent='WebGL дэмждэг хөтөч дээр нээнэ үү.';console.error(err);}}
 const faceAngles={1:[0,0],2:[0,-90],3:[-90,0],4:[90,0],5:[0,90],6:[0,180]};
 function setDie(value){const [x,y]=faceAngles[value];$('die').style.transform=`rotateX(${x}deg) rotateY(${y}deg)`;$('die').setAttribute('aria-label',`${value} буулаа`);}
 async function animateDie(value){const cube=$('die'),[x,y]=faceAngles[value],reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;playDiceSound(reduced?.2:1.2);const anim=cube.animate(reduced?[{opacity:.4},{opacity:1}]:[{transform:'translate(-60px,-30px) rotateX(0deg) rotateY(0deg) rotateZ(-25deg)'},{offset:.4,transform:'translate(30px,-42px) rotateX(390deg) rotateY(250deg) rotateZ(20deg)'},{offset:.7,transform:'translate(10px,0px) rotateX(620deg) rotateY(530deg) rotateZ(-12deg)'},{offset:.87,transform:`translate(0,-9px) rotateX(${x+720}deg) rotateY(${y+720}deg)`},{transform:`translate(0,0) rotateX(${x+720}deg) rotateY(${y+720}deg)`}],{duration:reduced?200:1200,easing:'ease-out'});await anim.finished;setDie(value);}
 import { setupHandThrow } from './hand-throw.js';
-setupHandThrow({canThrow:()=>started&&!rolled&&!rolling&&!finished,throwDice:()=>$('roll').click()});
+setupHandThrow({canThrow:()=>lan?Boolean(multiplayer?.canRoll()):started&&!rolled&&!rolling&&!finished,throwDice:()=>$('roll').click()});
 
-const lan=new URLSearchParams(location.search).get('lan')==='1';
-let lanSocket=null,lanId=null,lanState=null,lanReady=false,lanSequence=0,lanPending=false;
-function renderLanUI(){
-  if(!lanState)return;
-  const current=lanState.players.find(p=>p.id===lanState.currentPlayerId);
-  $('turn').textContent=current ? current.name+' | Seat '+(current.seat+1) : 'Waiting for server';
-  $('scores').replaceChildren(...lanState.players.map(p=>{
+function renderLanUI({state,playerId,canRoll,canSelect}){
+  if(!state)return;
+  lanState=state;lanId=playerId;
+  const current=state.players.find(p=>p.id===state.currentPlayerId);
+  $('turn').textContent=state.finished?'Game finished':current ? current.name+' | Seat '+(current.seat+1) : 'Waiting for server';
+  $('scores').replaceChildren(...state.players.map(p=>{
     const el=document.createElement('div');
-    el.className='score'+(p.id===lanState.currentPlayerId?' active':'');
+    el.className='score'+(p.id===state.currentPlayerId&&!state.finished?' active':'')+(p.eliminated?' eliminated':'');
     const label=document.createElement('span'),value=document.createElement('strong');
-    label.textContent=p.name+' | Seat '+(p.seat+1)+(p.id===lanId?' (You)':'');
+    label.textContent=p.name+' | Seat '+(p.seat+1)+(p.id===lanId?' (You)':'')+(p.eliminated?' | eliminated':'');
     value.textContent=p.score+' bones';el.append(label,value);return el;
   }));
-  $('roll').disabled=!lanReady||!lanSocket?.connected||lanPending||rolling||Boolean(lanState.rolled)||lanState.finished||lanId!==lanState.currentPlayerId;
+  $('roll').disabled=!canRoll;
+  document.querySelectorAll('#choices [data-group-id]').forEach(button=>{button.disabled=!canSelect(button.dataset.groupId);});
 }
-async function applyLanState(){
-  if(!lanReady||!lanState)return;
-  const state=lanState;
+function describeLanState(state){
+  const name=id=>state.players.find(p=>p.id===id)?.name||'Player';
+  if(state.finished)return state.winners.length?'Winner'+(state.winners.length>1?'s':'')+': '+state.winners.map(id=>name(id)+' ('+state.players.find(p=>p.id===id).score+')').join(', '):'Game finished.';
+  if(state.lastAction?.kind==='return')return name(state.lastAction.playerId)+' returned '+state.lastAction.amount+' bones automatically. Next turn: '+name(state.currentPlayerId)+'.';
+  if(state.lastAction?.kind==='eliminate')return name(state.lastAction.playerId)+' was eliminated: not enough bones to return. Next turn: '+name(state.currentPlayerId)+'.';
+  if(state.rolled)return state.rolled+' rolled. '+name(state.currentPlayerId)+' can take one highlighted group.';
+  return 'Waiting for '+name(state.currentPlayerId)+' to roll.';
+}
+function refreshLanUI(){
+  if(multiplayer)renderLanUI({state:lanState,playerId:lanId,canRoll:multiplayer.canRoll(),canSelect:multiplayer.canSelect});
+}
+async function applyLanState(state,{animate}){
   started=state.started;finished=state.finished;count=state.players.length;
   scores=state.players.map(p=>p.score);eliminated=state.players.map(p=>p.eliminated);
   player=state.players.findIndex(p=>p.id===state.currentPlayerId);
   $('start-screen').hidden=true;$('restart').disabled=true;
-  if(state.rollSequence>lanSequence){
-    lanSequence=state.rollSequence;rolling=true;renderLanUI();
-    $('message').textContent='Rolling dice...';
-    await animateDie(state.rolled);rolling=false;
-  }
-  rolled=state.rolled;mode='take';update();renderLanUI();
-  $('message').textContent=rolled ? rolled+' rolled. Group selection is not available yet.' : 'LAN: Waiting for '+$('turn').textContent+' to roll.';
-}
-function requestLanRoll(){
-  if($('roll').disabled||!lanSocket)return;
-  lanPending=true;renderLanUI();
-  lanSocket.timeout(5000).emit('game:roll',{},(error,response)=>{
-    lanPending=false;renderLanUI();
-    if(error||!response?.ok)$('message').textContent=response?.error||'Server did not respond. Reconnecting...';
-  });
+  rolled=0;update();refreshLanUI();
+  if(animate&&state.lastRoll){
+    rolling=true;$('message').textContent='Rolling dice...';
+    try{await animateDie(state.lastRoll.value);}finally{rolling=false;}
+  }else if(state.lastRoll)setDie(state.lastRoll.value);
+  syncAlagBoard(groups,state.groups);
+  rolled=state.rolled;mode=state.mode;update();refreshLanUI();
+  $('message').textContent=describeLanState(state);
 }
 if(lan){
   $('start-screen').hidden=true;$('restart').disabled=true;
-  $('message').textContent='Connecting to LAN game...';
-  if(typeof io==='function'){
-    lanSocket=io({auth:{sessionToken:sessionStorage.getItem('lan-session-token')}});
-    lanSocket.on('session',s=>{lanId=s.playerId;lanSocket.auth.sessionToken=s.token;sessionStorage.setItem('lan-session-token',s.token);renderLanUI();});
-    lanSocket.on('game:state',state=>{lanState=state;applyLanState();});
-    lanSocket.on('connect',renderLanUI);
-    lanSocket.on('disconnect',()=>{renderLanUI();$('message').textContent='Disconnected. Reconnecting to your LAN seat...';});
-    lanSocket.on('connect_error',()=>{$('roll').disabled=true;$('message').textContent='Cannot connect to LAN server.';});
-    lanSocket.on('lobby:state',state=>{if(!state.started)$('message').textContent='No active LAN game. Return to the lobby.';});
-  }
+  $('message').textContent='Connecting to Alag Melkhii...';
+  if(typeof io==='function')multiplayer=createAlagMultiplayer({applyState:applyLanState,renderControls:renderLanUI,onStatus:text=>{$('message').textContent=text;}});
+  else $('message').textContent='Server unavailable. Open the game through the multiplayer lobby.';
 }
-init().then(()=>{lanReady=true;if(lanState)applyLanState();});
+init().then(loaded=>{if(loaded)multiplayer?.ready();});

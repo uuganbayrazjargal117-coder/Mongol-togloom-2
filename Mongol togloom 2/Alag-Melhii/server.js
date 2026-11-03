@@ -4,12 +4,13 @@ const { networkInterfaces } = require('node:os');
 const path = require('node:path');
 const { Server } = require('socket.io');
 const { createHorseGame } = require('./horse-game.cjs');
+const { createAlagGame, alagRulesReady } = require('./alag-game.cjs');
 
-const { randomUUID, randomInt } = require('node:crypto');
+const { randomUUID } = require('node:crypto');
 const MAX_PLAYERS = 12;
 const PORT = process.env.PORT || 3000;
 
-function createLobbyServer({ horseOptions } = {}) {
+function createLobbyServer({ horseOptions, alagOptions } = {}) {
   const app = express();
   const httpServer = createServer(app);
   const io = new Server(httpServer, { maxHttpBufferSize: 4096 });
@@ -64,7 +65,10 @@ function createLobbyServer({ horseOptions } = {}) {
         horseGame.setConnected(restored, true);
         socket.emit('horse:state', horseGame.snapshot());
       }
-      if (game) socket.emit('game:state', game);
+      if (game) {
+        game.setConnected(restored, true);
+        socket.emit('game:state', game.snapshot());
+      }
     }
     // Connections do not occupy a seat until Join Game is accepted.
     socket.emit('lobby:state', snapshot());
@@ -107,7 +111,9 @@ function createLobbyServer({ horseOptions } = {}) {
       reply({ ok: true });
     });
 
-    socket.on('lobby:start', acknowledge => {
+    socket.on('lobby:start', async acknowledge => {
+      // Load the shared logical catalog before validating/locking this start request.
+      const alagRules = selectedGame === 'alag' ? await alagRulesReady : null;
       const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
       if (!players.has(socket.data.playerId) || socket.data.playerId !== hostId) {
         return reply({ ok: false, error: 'Only the lobby host can start the game.' });
@@ -122,26 +128,28 @@ function createLobbyServer({ horseOptions } = {}) {
         }
         io.emit('horse:state', horseGame.snapshot());
       } else {
-        game = { id: randomUUID(), players: roster.map(p => ({ ...p, score: 0, eliminated: false })),
-          currentPlayerId: roster[0].id, currentSeat: roster[0].seat,
-          rolled: 0, rollSequence: 0, started: true, finished: false };
-        io.emit('game:state', game);
+        game = createAlagGame(roster, state => io.emit('game:state', state), alagRules, alagOptions);
+        for (const p of roster) game.setConnected(p.id, [...io.sockets.sockets.values()].some(s => s.data.playerId === p.id));
+        io.emit('game:state', game.snapshot());
       }
-      io.emit('lobby:started', { selectedGame, gameId: horseGame?.snapshot().id ?? game.id });
+      io.emit('lobby:started', { selectedGame, gameId: horseGame?.snapshot().id ?? game.snapshot().id });
       broadcast();
       reply({ ok: true });
     });
 
     socket.on('game:roll', (payload, acknowledge) => {
       const reply = typeof payload === 'function' ? payload : typeof acknowledge === 'function' ? acknowledge : () => {};
-      if (!game || !players.has(socket.data.playerId) || game.finished ||
-          socket.data.playerId !== game.currentPlayerId || game.rolled) {
+      if (!socket.connected || !game || !players.has(socket.data.playerId)) {
         return reply({ ok: false, error: 'You cannot roll now.' });
       }
-      game.rolled = randomInt(1, 7);
-      game.rollSequence++;
-      io.emit('game:state', game);
-      reply({ ok: true });
+      reply(game.roll(socket.data.playerId, payload));
+    });
+    socket.on('game:select', (payload, acknowledge) => {
+      const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
+      if (!socket.connected || !game || !players.has(socket.data.playerId)) {
+        return reply({ ok: false, error: 'You cannot select a group now.' });
+      }
+      reply(game.select(socket.data.playerId, payload));
     });
     socket.on('horse:throw', async (payload, acknowledge) => {
       const reply = typeof acknowledge === 'function' ? acknowledge : () => {};
@@ -157,6 +165,7 @@ function createLobbyServer({ horseOptions } = {}) {
       if (horseGame && ![...io.sockets.sockets.values()].some(s => s.data.playerId === id)) {
         horseGame.setConnected(id, false);
       }
+      if (game && ![...io.sockets.sockets.values()].some(s => s.data.playerId === id)) game.setConnected(id, false);
       // Allow navigation/reconnection; keep a started game's roster fixed.
       const timer = setTimeout(() => {
         if (started || [...io.sockets.sockets.values()].some(s => s.data.playerId === id)) return;
